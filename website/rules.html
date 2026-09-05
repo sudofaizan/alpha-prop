@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rules — AlphaFX</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body data-page="rules">
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="logo">ALPHAFX</div>
+        <div class="sub">TRADER PORTAL</div>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-label">WORKSPACE</div>
+        <a href="index.html" class="nav-item">Dashboard</a>
+        <a href="index.html" class="nav-item">Challenges</a>
+        <a href="rules.html" class="nav-item active">Rules</a>
+      </nav>
+      <div class="sidebar-footer"><a href="index.html">← Back to challenges</a></div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <div class="topbar-title">Trading Rules</div>
+        <div class="topbar-right">
+          <span class="topbar-date" id="topbar-date"></span>
+        </div>
+      </header>
+
+      <main class="content rules-page">
+        <div class="page-hero">
+          <span class="badge-pill">RULEBOOK v1.0</span>
+          <h1>AlphaFX challenge rules</h1>
+          <p>Designed for serious traders. Static drawdown, consistency requirements, and zero tolerance on news/weekend violations.</p>
+        </div>
+
+        <div class="stat-banner">
+          <div class="stat-box">
+            <div class="num">~90%</div>
+            <div class="lbl">Expected eval failure rate</div>
+          </div>
+          <div class="stat-box">
+            <div class="num">Static</div>
+            <div class="lbl">Drawdown never trails up</div>
+          </div>
+          <div class="stat-box">
+            <div class="num">0</div>
+            <div class="lbl">Free retries on breach</div>
+          </div>
+        </div>
+
+        <section>
+          <h2>1. Drawdown — static only</h2>
+          <p>All programs use <strong>static drawdown</strong> calculated from your starting balance. If you start with $10,000 and max overall loss is 10%, you fail at $9,000 equity — even if you were up 20% before. The limit never moves up with profit.</p>
+          <ul>
+            <li>Daily loss resets at 00:00 UTC (server time)</li>
+            <li>Floating P/L counts toward daily and overall limits in real time</li>
+            <li>One breach = instant fail, no warnings on eval accounts</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>2. Program types</h2>
+          <p><strong>One-step:</strong> 10% profit target, 8% max loss, 45-day limit. Hardest single-phase eval.</p>
+          <p><strong>Two-step:</strong> Phase 1 (6%) + Phase 2 (5%). 11% cumulative. Most popular — still ~90% fail rate.</p>
+          <p><strong>Three-step:</strong> Three gates at 5% / 5% / 4%. 14% cumulative. Lowest per-phase target, highest attrition across phases.</p>
+          <p><strong>Instant:</strong> No eval. Straight to funded at 70% split, 5% max loss, 1:30 leverage. Premium fee, no free retry.</p>
+        </section>
+
+        <section>
+          <h2>3. Profitable days (funded)</h2>
+          <p>Before each payout you need <strong>minimum 5 profitable days</strong>. A profitable day = closed P/L ≥ 0.4% of starting balance. Scalping one big day doesn't count — consistency is enforced.</p>
+        </section>
+
+        <section>
+          <h2>4. Consistency rule</h2>
+          <p>No single trading day's profit may exceed <strong>30% of your total accumulated profit</strong> during the payout cycle. Violation = payout denied, account review.</p>
+        </section>
+
+        <section>
+          <h2>5. News trading — banned</h2>
+          <p>No opening or holding trades <strong>±10 minutes</strong> around high-impact (red folder) news for the affected currency. Includes NFP, FOMC, CPI, rate decisions. First violation = fail on eval; funded = instant termination.</p>
+        </section>
+
+        <section>
+          <h2>6. Weekend holding — banned</h2>
+          <p>All positions must be closed by <strong>Friday 20:00 UTC</strong>. No exceptions. Gaps over the weekend are your risk — we don't take it.</p>
+        </section>
+
+        <section>
+          <h2>7. Max floating loss (funded)</h2>
+          <p>Live floating drawdown cannot exceed <strong>1.5% of balance</strong> at any moment. Breach = soft fail → account terminated.</p>
+        </section>
+
+        <section>
+          <h2>8. Inactivity</h2>
+          <p>No trades for <strong>10 consecutive calendar days</strong> during evaluation = automatic fail. Funded accounts get 14 days before review.</p>
+        </section>
+
+        <section>
+          <h2>9. Risk &amp; execution</h2>
+          <ul>
+            <li>Max 2% account risk per single trade</li>
+            <li>No martingale, grid, or hedging without written approval</li>
+            <li>EAs and copy trading prohibited unless pre-approved</li>
+            <li>Reverse trading across multiple AlphaFX accounts = permanent ban</li>
+            <li>Lot caps enforced per account size tier</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>10. Payouts</h2>
+          <ul>
+            <li>80% profit split (75% three-step, 70% instant)</li>
+            <li>14-day payout cycle after profitable days met</li>
+            <li>$50 minimum withdrawal</li>
+            <li>Crypto and bank transfer supported</li>
+          </ul>
+        </section>
+
+        <div class="cta-bar">
+          <div class="cta-price">
+            <div class="label">Ready to try?</div>
+          </div>
+          <a href="index.html" class="btn-gold" style="width:auto;padding:0.85rem 2rem;text-decoration:none">Pick a challenge</a>
+        </div>
+      </main>
+    </div>
+  </div>
+  <script>
+    const dateEl = document.getElementById("topbar-date");
+    if (dateEl) {
+      dateEl.textContent = new Date().toLocaleDateString("en-US", {
+        weekday: "short", year: "numeric", month: "short", day: "2-digit",
+      }).toUpperCase();
+    }
+  </script>
+</body>
+</html>
