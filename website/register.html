@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Register — AlphaFX</title>
+  <link rel="stylesheet" href="css/capiffy/dbe7481feefb38d2.css">
+  <link rel="stylesheet" href="css/fonts.css">
+  <link rel="stylesheet" href="css/capiffy/59f9d657f37015b6.css">
+  <style>
+    .login-shell{min-height:100vh;display:grid;place-items:center;padding:24px;background:var(--bg,#0a0a0f)}
+    .login-card{width:min(420px,100%);padding:32px 28px;border-radius:18px;background:var(--card,#141418);border:1px solid var(--border)}
+    .login-field{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+    .login-field input{padding:12px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg-2);color:var(--text)}
+    .login-submit{width:100%;padding:13px;border:none;border-radius:12px;font-weight:800;background:linear-gradient(135deg,#ffe45c,gold,#c99a2e);color:#1a1505;cursor:pointer}
+    .login-error{margin-bottom:14px;padding:10px 12px;border-radius:10px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:#fecaca;font-size:13px}
+  </style>
+</head>
+<body data-page="register">
+  <div class="login-shell">
+    <div class="login-card">
+      <h1 style="margin:0 0 8px;font-size:24px;color:var(--text);">Create account</h1>
+      <p style="margin:0 0 20px;color:var(--text-dim);font-size:14px;">Start with a fresh portal — no demo data.</p>
+      <div id="register-error" class="login-error" hidden></div>
+      <form id="register-form">
+        <div class="login-field"><label for="full_name">Full name</label><input id="full_name" name="full_name" required></div>
+        <div class="login-field"><label for="email">Email</label><input id="email" name="email" type="email" required></div>
+        <div class="login-field"><label for="password">Password</label><input id="password" name="password" type="password" minlength="8" required></div>
+        <button type="submit" class="login-submit">Create account</button>
+      </form>
+      <p style="margin-top:16px;font-size:13px;color:var(--text-dim);text-align:center;">Already have an account? <a href="login.html" style="color:var(--gold);">Sign in</a></p>
+    </div>
+  </div>
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+</body>
+</html>

@@ -1,230 +1,259 @@
 /**
- * AlphaFX Challenge Plans — strict rules designed for ~90% eval failure rate.
- * Static drawdown, consistency caps, news/weekend bans, floating loss limits.
+ * AlphaFX Challenge Plans — Capiffy-aligned data
  */
 const ALPHAFX_PLANS = {
-  accountSizes: [2500, 5000, 10000, 25000, 50000, 100000],
+  evalSizes: [2500, 5000, 10000, 25000, 50000, 100000],
+  instantSizes: [1500, 2500, 5000, 10000, 25000],
 
-  pricing: {
-    2500: 39,
-    5000: 69,
-    10000: 129,
-    25000: 279,
-    50000: 449,
-    100000: 699,
+  evalPricing: {
+    2500: 33,
+    5000: 55,
+    10000: 99,
+    25000: 199,
+    50000: 349,
+    100000: 549,
   },
 
-  /** Shared restrictions across all programs */
-  globalRules: [
-    { label: "Profit split (funded)", value: "80%", highlight: true },
-    { label: "Drawdown type", value: "Static — based on starting balance" },
-    { label: "Payout cycle", value: "14 days · crypto / bank" },
-    { label: "Minimum withdrawal", value: "$50" },
-    { label: "Profitable days required", value: "Min 5 days · 0.4% each" },
-    { label: "Max floating loss (funded)", value: "1.5% of balance" },
-    { label: "Consistency rule", value: "Best day ≤ 30% of total profit" },
-    { label: "News trading", value: "Not allowed · ±10 min high impact" },
-    { label: "Weekend holding", value: "Not allowed · close Fri 20:00 UTC" },
-    { label: "Inactivity breach", value: "Fail after 10 days with no trades" },
-    { label: "Max risk per trade", value: "2% of account balance" },
-    { label: "EAs / bots", value: "Not allowed unless pre-approved" },
-    { label: "Hedging / copy trading", value: "Prohibited across accounts" },
-    { label: "Swap", value: "Swap-free on all instruments" },
-  ],
+  instantPricing: {
+    1500: 24,
+    2500: 33,
+    5000: 55,
+    10000: 99,
+    25000: 199,
+  },
+
+  threeStepPricing: {
+    2500: 28,
+    5000: 48,
+    10000: 89,
+    25000: 179,
+    50000: 319,
+    100000: 499,
+  },
+
+  promoDiscount: 0.38,
+  promoCode: "ALPHA38",
+
+  includes: {
+    "one-step": [
+      { hi: "80% profit split", rest: "on funded payouts" },
+      { hi: "Trailing", rest: "drawdown" },
+      { hi: "On-demand", rest: "crypto payouts, no cycle" },
+      { hi: "$50 minimum", rest: "withdrawal" },
+      { hi: "Profitable days", rest: "min 3 required" },
+      { hi: "Max floating loss", rest: "1.5% of balance · once funded" },
+      { hi: "Trading through News", rest: "Not allowed" },
+      { hi: "Weekend holding", rest: "Not allowed" },
+      { hi: "No time limit", rest: "on the evaluation" },
+      { hi: "Swap-free", rest: "no overnight swap, every instrument" },
+    ],
+    "two-step": [
+      { hi: "80% profit split", rest: "on funded payouts" },
+      { hi: "Static", rest: "drawdown" },
+      { hi: "14-day payout cycle", rest: "crypto payouts" },
+      { hi: "$50 minimum", rest: "withdrawal" },
+      { hi: "Profitable days", rest: "min 3 required" },
+      { hi: "Max floating loss", rest: "1.5% of balance · once funded" },
+      { hi: "Trading through News", rest: "Not allowed" },
+      { hi: "Weekend holding", rest: "Not allowed" },
+      { hi: "No time limit", rest: "on the evaluation" },
+      { hi: "Swap-free", rest: "no overnight swap, every instrument" },
+    ],
+    "three-step": [
+      { hi: "80% profit split", rest: "on funded payouts" },
+      { hi: "Static", rest: "drawdown" },
+      { hi: "On-demand", rest: "crypto payouts, no cycle" },
+      { hi: "$50 minimum", rest: "withdrawal" },
+      { hi: "Profitable days", rest: "min 3 required" },
+      { hi: "Max floating loss", rest: "1.5% of balance · once funded" },
+      { hi: "Trading through News", rest: "Not allowed" },
+      { hi: "Weekend holding", rest: "Not allowed" },
+      { hi: "No time limit", rest: "on the evaluation" },
+      { hi: "Swap-free", rest: "no overnight swap, every instrument" },
+    ],
+    instant: [
+      { hi: "80% profit split", rest: "on funded payouts" },
+      { hi: "Trailing", rest: "drawdown" },
+      { hi: "On-demand", rest: "crypto payouts, no cycle" },
+      { hi: "$50 minimum", rest: "withdrawal" },
+      { hi: "Consistency rule", rest: "20% from best day" },
+      { hi: "Max floating loss", rest: "1.5% of balance" },
+      { hi: "Min 2-minute hold", rest: "per trade" },
+      { hi: "Trading through News", rest: "Not allowed" },
+      { hi: "Weekend holding", rest: "Not allowed" },
+      { hi: "Swap-free", rest: "no overnight swap, every instrument" },
+    ],
+  },
 
   programs: {
     "one-step": {
       id: "one-step",
       name: "One-step",
-      tagline: "Single evaluation. Highest bar, fastest funded path.",
-      badge: "HARDEST",
+      slug: "ONE-STEP",
+      tagline: "Single evaluation phase. Hit the target — get funded.",
       phases: [
         {
-          id: "phase1",
-          name: "Evaluation",
+          name: "Phase 1",
           profitTargetPct: 10,
-          maxDailyLossPct: 4,
-          maxOverallLossPct: 8,
-          leverage: "1:50",
-          drawdownType: "Static",
-          timeLimitDays: 45,
-          minTradingDays: 5,
-          notes: "Hit 10% without breaching daily or overall limits. Timer starts on first trade.",
+          maxDailyLossPct: 3,
+          maxOverallLossPct: 7,
+          leverage: "1:100",
+          drawdownType: "Trailing",
+          profitableDays: 3,
         },
         {
-          id: "funded",
           name: "Funded",
           profitTargetPct: null,
           maxDailyLossPct: 3,
-          maxOverallLossPct: 6,
-          leverage: "1:50",
-          drawdownType: "Static",
-          timeLimitDays: null,
-          minTradingDays: 5,
-          notes: "Live funded account. Soft breach = instant termination.",
+          maxOverallLossPct: 7,
+          leverage: "1:100",
+          drawdownType: "Trailing",
+          profitSplit: "80%",
+          profitableDays: 3,
         },
-      ],
-      extras: [
-        "Single 10% profit target — no second chance phase",
-        "Tightest overall loss at 8% during eval",
-        "45-day hard deadline from first trade",
       ],
     },
 
     "two-step": {
       id: "two-step",
       name: "Two-step",
-      tagline: "Two evaluation phases. Balanced route — still brutal.",
-      badge: "POPULAR",
+      slug: "TWO-STEP",
+      tagline: "Two evaluation phases. A balanced route to funded.",
       phases: [
         {
-          id: "phase1",
           name: "Phase 1",
-          profitTargetPct: 6,
+          profitTargetPct: 5,
           maxDailyLossPct: 4,
           maxOverallLossPct: 10,
           leverage: "1:100",
           drawdownType: "Static",
-          timeLimitDays: 60,
-          minTradingDays: 5,
-          notes: "Prove consistency before Phase 2 unlock.",
+          profitableDays: 3,
         },
         {
-          id: "phase2",
           name: "Phase 2",
-          profitTargetPct: 5,
-          maxDailyLossPct: 3,
-          maxOverallLossPct: 8,
+          profitTargetPct: 8,
+          maxDailyLossPct: 4,
+          maxOverallLossPct: 10,
           leverage: "1:100",
           drawdownType: "Static",
-          timeLimitDays: 60,
-          minTradingDays: 5,
-          notes: "Lower target but tighter daily loss. Phase resets profit counter.",
+          profitableDays: 3,
         },
         {
-          id: "funded",
           name: "Funded",
           profitTargetPct: null,
-          maxDailyLossPct: 3,
-          maxOverallLossPct: 6,
+          maxDailyLossPct: 4,
+          maxOverallLossPct: 10,
           leverage: "1:100",
           drawdownType: "Static",
-          timeLimitDays: null,
-          minTradingDays: 5,
-          notes: "80% profit split. Max floating loss 1.5% enforced live.",
+          profitSplit: "80%",
+          profitableDays: 3,
         },
-      ],
-      extras: [
-        "Must pass both phases sequentially — fail either = restart",
-        "Phase 2 daily loss drops to 3%",
-        "Combined eval targets: 11% total profit required",
       ],
     },
 
     "three-step": {
       id: "three-step",
       name: "Three-step",
-      tagline: "Three gates. Lowest per-phase target, highest attrition.",
-      badge: "EXTREME",
+      slug: "THREE-STEP",
+      tagline: "Three-phase route for cautious risk takers.",
       phases: [
         {
-          id: "phase1",
           name: "Phase 1",
           profitTargetPct: 5,
-          maxDailyLossPct: 4,
-          maxOverallLossPct: 10,
-          leverage: "1:100",
-          drawdownType: "Static",
-          timeLimitDays: 45,
-          minTradingDays: 4,
-          notes: "Warm-up phase. One bad day can end the run.",
-        },
-        {
-          id: "phase2",
-          name: "Phase 2",
-          profitTargetPct: 5,
-          maxDailyLossPct: 3,
-          maxOverallLossPct: 8,
-          leverage: "1:100",
-          drawdownType: "Static",
-          timeLimitDays: 45,
-          minTradingDays: 4,
-          notes: "Profit counter resets. Overall loss tightens.",
-        },
-        {
-          id: "phase3",
-          name: "Phase 3",
-          profitTargetPct: 4,
-          maxDailyLossPct: 3,
-          maxOverallLossPct: 6,
-          leverage: "1:100",
-          drawdownType: "Static",
-          timeLimitDays: 45,
-          minTradingDays: 4,
-          notes: "Final gate. 6% max loss — no room for drawdown.",
-        },
-        {
-          id: "funded",
-          name: "Funded",
-          profitTargetPct: null,
-          maxDailyLossPct: 2.5,
+          maxDailyLossPct: 5,
           maxOverallLossPct: 5,
           leverage: "1:100",
           drawdownType: "Static",
-          timeLimitDays: null,
-          minTradingDays: 5,
-          notes: "75% profit split. Strictest funded rules.",
+          profitableDays: 3,
         },
-      ],
-      extras: [
-        "Three separate profit targets — 14% cumulative",
-        "Funded daily loss capped at 2.5%",
-        "75% profit split (lower than other programs)",
+        {
+          name: "Phase 2",
+          profitTargetPct: 5,
+          maxDailyLossPct: 5,
+          maxOverallLossPct: 5,
+          leverage: "1:100",
+          drawdownType: "Static",
+          profitableDays: 3,
+        },
+        {
+          name: "Phase 3",
+          profitTargetPct: 4,
+          maxDailyLossPct: 4,
+          maxOverallLossPct: 4,
+          leverage: "1:100",
+          drawdownType: "Static",
+          profitableDays: 3,
+        },
+        {
+          name: "Funded",
+          profitTargetPct: null,
+          maxDailyLossPct: 4,
+          maxOverallLossPct: 8,
+          leverage: "1:100",
+          drawdownType: "Static",
+          profitSplit: "80%",
+          profitableDays: 3,
+        },
       ],
     },
 
     instant: {
       id: "instant",
       name: "Instant",
-      tagline: "Skip evaluation. Pay premium. Survive the funded rules.",
-      badge: "INSTANT",
+      slug: "INSTANT",
+      tagline: "Skip the eval. Get funded from day one.",
       phases: [
         {
-          id: "funded",
           name: "Funded",
           profitTargetPct: null,
           maxDailyLossPct: 3,
           maxOverallLossPct: 5,
-          leverage: "1:30",
-          drawdownType: "Static",
-          timeLimitDays: null,
-          minTradingDays: 5,
-          notes: "No eval — straight to live. 70% split. Leverage capped at 1:30.",
+          leverage: "1:100",
+          drawdownType: "Trailing",
+          profitSplit: "80%",
+          consistencyLimit: "20% from best day",
         },
       ],
-      extras: [
-        "No evaluation phase — immediate funded access",
-        "70% profit split (lowest tier)",
-        "5% max overall loss from day one",
-        "2× challenge fee · no free retry",
-      ],
-      profitSplit: "70%",
     },
   },
 };
 
-/** Format currency */
 function fmtMoney(n) {
-  if (n >= 1000) return `$${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}K`;
+  if (n >= 1000) {
+    const k = n / 1000;
+    return `$${Number.isInteger(k) ? k : k.toFixed(1)}K`;
+  }
   return `$${n}`;
 }
 
-/** Calculate dollar amount from pct */
+function fmtMoneyFull(n) {
+  return `$${n.toLocaleString("en-US")}`;
+}
+
 function pctOf(balance, pct) {
   return Math.round(balance * (pct / 100));
 }
 
-/** Get program by id */
 function getProgram(id) {
   return ALPHAFX_PLANS.programs[id];
+}
+
+function getSizes(programId) {
+  return programId === "instant" ? ALPHAFX_PLANS.instantSizes : ALPHAFX_PLANS.evalSizes;
+}
+
+function getBasePrice(size, programId) {
+  if (programId === "instant") return ALPHAFX_PLANS.instantPricing[size] ?? ALPHAFX_PLANS.instantPricing[2500];
+  if (programId === "three-step") return ALPHAFX_PLANS.threeStepPricing[size] ?? ALPHAFX_PLANS.threeStepPricing[2500];
+  return ALPHAFX_PLANS.evalPricing[size] ?? ALPHAFX_PLANS.evalPricing[2500];
+}
+
+function getPrice(size, programId, discounted) {
+  const base = getBasePrice(size, programId);
+  if (discounted) return Math.round(base * (1 - ALPHAFX_PLANS.promoDiscount) * 100) / 100;
+  return base;
+}
+
+function showMostChosen(programId, size) {
+  return programId === "instant" && size === 1500;
 }

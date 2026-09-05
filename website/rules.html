@@ -2,144 +2,24 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#13131a">
   <title>Rules — AlphaFX</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/capiffy/dbe7481feefb38d2.css">
+  <link rel="stylesheet" href="css/capiffy/59f9d657f37015b6.css">
+  <link rel="stylesheet" href="css/capiffy/c1bee8ab903b382d.css">
+  <link rel="stylesheet" href="css/capiffy/3ac04c147fc81d91.css">
+  <link rel="stylesheet" href="css/capiffy/3c6a7efccbedf43f.css">
+  <link rel="stylesheet" href="css/fonts.css">
+  <link rel="stylesheet" href="css/rules-page.css">
 </head>
-<body data-page="rules">
-  <div class="app">
-    <aside class="sidebar">
-      <div class="sidebar-brand">
-        <div class="logo">ALPHAFX</div>
-        <div class="sub">TRADER PORTAL</div>
-      </div>
-      <nav class="sidebar-nav">
-        <div class="nav-label">WORKSPACE</div>
-        <a href="index.html" class="nav-item">Dashboard</a>
-        <a href="index.html" class="nav-item">Challenges</a>
-        <a href="rules.html" class="nav-item active">Rules</a>
-      </nav>
-      <div class="sidebar-footer"><a href="index.html">← Back to challenges</a></div>
-    </aside>
-
-    <div class="main">
-      <header class="topbar">
-        <div class="topbar-title">Trading Rules</div>
-        <div class="topbar-right">
-          <span class="topbar-date" id="topbar-date"></span>
-        </div>
-      </header>
-
-      <main class="content rules-page">
-        <div class="page-hero">
-          <span class="badge-pill">RULEBOOK v1.0</span>
-          <h1>AlphaFX challenge rules</h1>
-          <p>Designed for serious traders. Static drawdown, consistency requirements, and zero tolerance on news/weekend violations.</p>
-        </div>
-
-        <div class="stat-banner">
-          <div class="stat-box">
-            <div class="num">~90%</div>
-            <div class="lbl">Expected eval failure rate</div>
-          </div>
-          <div class="stat-box">
-            <div class="num">Static</div>
-            <div class="lbl">Drawdown never trails up</div>
-          </div>
-          <div class="stat-box">
-            <div class="num">0</div>
-            <div class="lbl">Free retries on breach</div>
-          </div>
-        </div>
-
-        <section>
-          <h2>1. Drawdown — static only</h2>
-          <p>All programs use <strong>static drawdown</strong> calculated from your starting balance. If you start with $10,000 and max overall loss is 10%, you fail at $9,000 equity — even if you were up 20% before. The limit never moves up with profit.</p>
-          <ul>
-            <li>Daily loss resets at 00:00 UTC (server time)</li>
-            <li>Floating P/L counts toward daily and overall limits in real time</li>
-            <li>One breach = instant fail, no warnings on eval accounts</li>
-          </ul>
-        </section>
-
-        <section>
-          <h2>2. Program types</h2>
-          <p><strong>One-step:</strong> 10% profit target, 8% max loss, 45-day limit. Hardest single-phase eval.</p>
-          <p><strong>Two-step:</strong> Phase 1 (6%) + Phase 2 (5%). 11% cumulative. Most popular — still ~90% fail rate.</p>
-          <p><strong>Three-step:</strong> Three gates at 5% / 5% / 4%. 14% cumulative. Lowest per-phase target, highest attrition across phases.</p>
-          <p><strong>Instant:</strong> No eval. Straight to funded at 70% split, 5% max loss, 1:30 leverage. Premium fee, no free retry.</p>
-        </section>
-
-        <section>
-          <h2>3. Profitable days (funded)</h2>
-          <p>Before each payout you need <strong>minimum 5 profitable days</strong>. A profitable day = closed P/L ≥ 0.4% of starting balance. Scalping one big day doesn't count — consistency is enforced.</p>
-        </section>
-
-        <section>
-          <h2>4. Consistency rule</h2>
-          <p>No single trading day's profit may exceed <strong>30% of your total accumulated profit</strong> during the payout cycle. Violation = payout denied, account review.</p>
-        </section>
-
-        <section>
-          <h2>5. News trading — banned</h2>
-          <p>No opening or holding trades <strong>±10 minutes</strong> around high-impact (red folder) news for the affected currency. Includes NFP, FOMC, CPI, rate decisions. First violation = fail on eval; funded = instant termination.</p>
-        </section>
-
-        <section>
-          <h2>6. Weekend holding — banned</h2>
-          <p>All positions must be closed by <strong>Friday 20:00 UTC</strong>. No exceptions. Gaps over the weekend are your risk — we don't take it.</p>
-        </section>
-
-        <section>
-          <h2>7. Max floating loss (funded)</h2>
-          <p>Live floating drawdown cannot exceed <strong>1.5% of balance</strong> at any moment. Breach = soft fail → account terminated.</p>
-        </section>
-
-        <section>
-          <h2>8. Inactivity</h2>
-          <p>No trades for <strong>10 consecutive calendar days</strong> during evaluation = automatic fail. Funded accounts get 14 days before review.</p>
-        </section>
-
-        <section>
-          <h2>9. Risk &amp; execution</h2>
-          <ul>
-            <li>Max 2% account risk per single trade</li>
-            <li>No martingale, grid, or hedging without written approval</li>
-            <li>EAs and copy trading prohibited unless pre-approved</li>
-            <li>Reverse trading across multiple AlphaFX accounts = permanent ban</li>
-            <li>Lot caps enforced per account size tier</li>
-          </ul>
-        </section>
-
-        <section>
-          <h2>10. Payouts</h2>
-          <ul>
-            <li>80% profit split (75% three-step, 70% instant)</li>
-            <li>14-day payout cycle after profitable days met</li>
-            <li>$50 minimum withdrawal</li>
-            <li>Crypto and bank transfer supported</li>
-          </ul>
-        </section>
-
-        <div class="cta-bar">
-          <div class="cta-price">
-            <div class="label">Ready to try?</div>
-          </div>
-          <a href="index.html" class="btn-gold" style="width:auto;padding:0.85rem 2rem;text-decoration:none">Pick a challenge</a>
-        </div>
-      </main>
-    </div>
+<body data-page="rules" data-title="Rules" data-no-wrap="true">
+  <div id="app-root">
+<div class="dfx-scope"><section class="jsx-e16dffddd4c7e6ed pk-section pk-section--dark" style="padding: 24px 24px 64px;"><div class="jsx-e16dffddd4c7e6ed pk-section-inner to"><div class="jsx-e16dffddd4c7e6ed to-hero"><h1 class="jsx-e16dffddd4c7e6ed to-hero-title">Trading Objectives</h1><p class="jsx-e16dffddd4c7e6ed to-hero-sub">Understand the objectives, limits and conditions for each of our evaluation models.</p></div><div role="tablist" aria-label="Program model" class="jsx-e16dffddd4c7e6ed to-models"><button type="button" role="tab" aria-selected="false" class="jsx-e16dffddd4c7e6ed to-model">1-Step</button><button type="button" role="tab" aria-selected="true" class="jsx-e16dffddd4c7e6ed to-model is-active">2-Step</button><button type="button" role="tab" aria-selected="false" class="jsx-e16dffddd4c7e6ed to-model">3-Step</button><button type="button" role="tab" aria-selected="false" class="jsx-e16dffddd4c7e6ed to-model">Instant</button></div><div role="tablist" aria-label="Section" class="jsx-e16dffddd4c7e6ed to-tabs"><button type="button" role="tab" aria-selected="true" class="jsx-e16dffddd4c7e6ed to-tab is-active">General Rules</button><button type="button" role="tab" aria-selected="false" class="jsx-e16dffddd4c7e6ed to-tab">Account Violations</button><button type="button" role="tab" aria-selected="false" class="jsx-e16dffddd4c7e6ed to-tab">Trading Conditions</button><button type="button" role="tab" aria-selected="false" class="jsx-e16dffddd4c7e6ed to-tab">Rewards</button><button type="button" role="tab" aria-selected="false" class="jsx-e16dffddd4c7e6ed to-tab">Prohibited Strategies</button></div><div class="jsx-e16dffddd4c7e6ed to-flow-wrap"><section class="to-step"><div class="to-step-head"><span class="to-step-num">1</span><div><div class="to-step-title">The Evaluation Stage</div><div class="to-step-sub">Clear all 2 phases within the rules to get your funded account.</div></div></div><div class="jsx-e16dffddd4c7e6ed to-cols"><div class="jsx-e16dffddd4c7e6ed to-col"><div class="jsx-e16dffddd4c7e6ed to-col-label is-green">Targets — how to pass</div><div class="to-phase"><div class="to-phase-head"><span class="to-phase-title">Phase 1</span><span class="to-phase-step">STEP 1</span></div><p class="to-phase-p">Reach the profit target while respecting the risk limits. No time pressure.</p><div class="to-phase-stats"><div><div class="to-stat-k"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1.4"></circle></svg> Profit target</div><div class="to-stat-v">5%</div></div></div><div class="to-phase-meta"><span class="to-meta-pill"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 10-12h-7l1-8z"></path></svg> Leverage: <b>up to 1:100</b></span><span class="to-meta-pill"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 9a3.5 3.5 0 100 6c2 0 3-1.5 5.5-3s3.5-3 5.5-3a3.5 3.5 0 110 6c-2 0-3-1.5-5.5-3S8.5 9 6.5 9z"></path></svg> Period: <b>Unlimited</b></span></div></div><div class="to-phase-conn"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></div><div class="to-phase"><div class="to-phase-head"><span class="to-phase-title">Phase 2</span><span class="to-phase-step">STEP 2</span></div><p class="to-phase-p">A further verification phase with the same risk rules.</p><div class="to-phase-stats"><div><div class="to-stat-k"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1.4"></circle></svg> Profit target</div><div class="to-stat-v">8%</div></div></div><div class="to-phase-meta"><span class="to-meta-pill"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 10-12h-7l1-8z"></path></svg> Leverage: <b>up to 1:100</b></span><span class="to-meta-pill"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 9a3.5 3.5 0 100 6c2 0 3-1.5 5.5-3s3.5-3 5.5-3a3.5 3.5 0 110 6c-2 0-3-1.5-5.5-3S8.5 9 6.5 9z"></path></svg> Period: <b>Unlimited</b></span></div></div></div><div class="jsx-e16dffddd4c7e6ed to-col"><div class="jsx-e16dffddd4c7e6ed to-col-label is-red">Risk limits &amp; requirements</div><p class="jsx-e16dffddd4c7e6ed to-col-note">These apply to every phase.</p><div class="to-limit"><span class="to-limit-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l6 6 4-4 8 8"></path><path d="M21 17v-4h-4"></path></svg></span><div class="to-limit-body"><div class="to-limit-top"><span class="to-limit-label">Max Daily Loss</span><span class="to-limit-val">4%</span></div><p class="to-limit-desc">The amount you are allowed to lose every day.</p></div></div><div class="to-limit"><span class="to-limit-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"></path></svg></span><div class="to-limit-body"><div class="to-limit-top"><span class="to-limit-label">Max Overall Loss</span><span class="to-limit-val">10%</span></div><p class="to-limit-desc">The amount you are allowed to lose overall.</p></div></div><div class="to-limit is-gold"><span class="to-limit-ico"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M3 9h18M8 2v4M16 2v4"></path></svg></span><div class="to-limit-body"><div class="to-limit-top"><span class="to-limit-label">Min Profitable Days</span><span class="to-limit-val">3 days</span></div><p class="to-limit-desc">Days where net profit is at least 0.5% of the starting balance — you need this many to pass.</p></div></div><div class="to-limit is-gold"><span class="to-limit-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg></span><div class="to-limit-body"><div class="to-limit-top"><span class="to-limit-label">Inactivity</span><span class="to-limit-val">30 days</span></div><p class="to-limit-desc">Close at least 1 trade every 30 days or the account is breached.</p></div></div></div></div><div class="jsx-e16dffddd4c7e6ed to-pills" style="margin-top: 18px;"><span class="to-gpill is-red"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a6 6 0 1112 0c0 7 3 9 3 9H3s3-2 3-9M10 21a2 2 0 004 0"></path></svg>News trading · Restricted</span><span class="to-gpill is-red"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A8 8 0 1111.2 3a6 6 0 109.8 9.8z"></path></svg>Weekend holding · Restricted</span><span class="to-gpill"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 9a3.5 3.5 0 100 6c2 0 3-1.5 5.5-3s3.5-3 5.5-3a3.5 3.5 0 110 6c-2 0-3-1.5-5.5-3S8.5 9 6.5 9z"></path></svg>No time limit</span></div><div class="to-flow"><span style="display: inline-flex; align-items: center; gap: 8px;"><span class="to-flow-step"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M8 12l3 3 5-6"></path></svg>Pass</span><span class="to-flow-sep"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></span></span><span style="display: inline-flex; align-items: center; gap: 8px;"><span class="to-flow-step">Funded account</span><span class="to-flow-sep"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></span></span><span style="display: inline-flex; align-items: center; gap: 8px;"><span class="to-flow-step">KYC at payout</span></span></div></section><section class="to-step"><div class="to-step-head"><span class="to-step-num is-green">2</span><div><div class="to-step-title">Funded Account</div><div class="to-step-sub">Follow these rules to get rewarded on your funded account.</div></div></div><div class="jsx-e16dffddd4c7e6ed to-col-label is-red">Rules &amp; limits</div><div class="to-limit"><span class="to-limit-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l6 6 4-4 8 8"></path><path d="M21 17v-4h-4"></path></svg></span><div class="to-limit-body"><div class="to-limit-top"><span class="to-limit-label">Max Daily Loss</span><span class="to-limit-val">4%</span></div><p class="to-limit-desc">The amount you are allowed to lose every day.</p></div></div><div class="to-limit"><span class="to-limit-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"></path></svg></span><div class="to-limit-body"><div class="to-limit-top"><span class="to-limit-label">Max Overall Loss</span><span class="to-limit-val">10%</span></div><p class="to-limit-desc">The amount you are allowed to lose overall.</p></div></div><div class="to-limit is-gold"><span class="to-limit-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"></path></svg></span><div class="to-limit-body"><div class="to-limit-top"><span class="to-limit-label">Max Floating Loss</span><span class="to-limit-val">1.5%</span></div><p class="to-limit-desc">Soft breach — open trades close and your profit split drops to 40%; the account stays active.</p></div></div><div class="to-limit is-gold"><span class="to-limit-ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg></span><div class="to-limit-body"><div class="to-limit-top"><span class="to-limit-label">Sub-1-minute trades</span><span class="to-limit-val">Profit deducted</span></div><p class="to-limit-desc">Profit from any trade you close in under 1 minute is deducted from your payout.</p></div></div><div class="jsx-e16dffddd4c7e6ed to-pills" style="margin-top: 14px;"><span class="to-gpill is-green"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M5 8l7-5 7 5M5 16l7 5 7-5"></path></svg>Profit split up to 80%</span><span class="to-gpill is-green"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="13" rx="1.5"></rect><path d="M3 12h18M12 8v13"></path><path d="M12 8s-2-4-4-4a2 2 0 100 4h4zM12 8s2-4 4-4a2 2 0 110 4h-4z"></path></svg>Payouts 14d after 1st trade</span><span class="to-gpill is-red"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a6 6 0 1112 0c0 7 3 9 3 9H3s3-2 3-9M10 21a2 2 0 004 0"></path></svg>News trading · Restricted</span><span class="to-gpill is-red"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A8 8 0 1111.2 3a6 6 0 109.8 9.8z"></path></svg>Weekend holding · Restricted</span><span class="to-gpill"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"></rect><path d="M3 9h18M8 2v4M16 2v4"></path></svg>Min 3 profitable days</span><span class="to-gpill"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 10-12h-7l1-8z"></path></svg>Leverage up to 1:100</span></div></section></div></div></section></div>
   </div>
-  <script>
-    const dateEl = document.getElementById("topbar-date");
-    if (dateEl) {
-      dateEl.textContent = new Date().toLocaleDateString("en-US", {
-        weekday: "short", year: "numeric", month: "short", day: "2-digit",
-      }).toUpperCase();
-    }
-  </script>
+  <script src="js/layout.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
 </body>
 </html>

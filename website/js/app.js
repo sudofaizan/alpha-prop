@@ -1,26 +1,26 @@
 /**
- * AlphaFX Challenges UI — plan / size / phase switching
+ * AlphaFX Challenges UI
  */
 (function () {
   const state = {
     program: "two-step",
     size: 2500,
     phaseIndex: 0,
+    couponApplied: false,
   };
 
   const els = {
     programTabs: document.getElementById("program-tabs"),
-    sizeTabs: document.getElementById("size-tabs"),
-    globalRules: document.getElementById("global-rules"),
+    sizeTabs: document.getElementById("size-tabs") || document.getElementById("header-center"),
+    planIncludes: document.getElementById("plan-includes"),
+    planPill: document.getElementById("plan-pill"),
     planTitle: document.getElementById("plan-title"),
     planTagline: document.getElementById("plan-tagline"),
-    planBadge: document.getElementById("plan-badge"),
     phaseTabs: document.getElementById("phase-tabs"),
     metricsBody: document.getElementById("metrics-body"),
-    phaseNote: document.getElementById("phase-note"),
-    programExtras: document.getElementById("program-extras"),
-    ctaPrice: document.getElementById("cta-price"),
-    ctaProgram: document.getElementById("cta-program"),
+    challengePrice: document.getElementById("challenge-price"),
+    couponInput: document.getElementById("coupon-input"),
+    referralInput: document.getElementById("referral-input"),
   };
 
   function renderProgramTabs() {
@@ -28,49 +28,39 @@
     els.programTabs.innerHTML = Object.values(ALPHAFX_PLANS.programs)
       .map(
         (p) =>
-          `<button class="tab-btn${p.id === state.program ? " active" : ""}" data-program="${p.id}">${p.name}</button>`
+          `<button type="button" class="tab-btn${p.id === state.program ? " active" : ""}" data-program="${p.id}">${p.name}</button>`
       )
       .join("");
   }
 
   function renderSizeTabs() {
-    if (!els.sizeTabs) return;
-    els.sizeTabs.innerHTML = ALPHAFX_PLANS.accountSizes
+    const container = document.getElementById("size-tabs") || document.getElementById("header-center");
+    if (!container) return;
+    container.innerHTML = ALPHAFX_PLANS.accountSizes
       .map(
         (s) =>
-          `<button class="size-btn${s === state.size ? " active" : ""}" data-size="${s}">${fmtMoney(s)}</button>`
+          `<button type="button" class="size-btn${s === state.size ? " active" : ""}" data-size="${s}">${fmtMoney(s)}</button>`
       )
       .join("");
+    els.sizeTabs = container;
   }
 
-  function renderGlobalRules() {
-    if (!els.globalRules) return;
-    const program = getProgram(state.program);
-    const split =
-      program.profitSplit ||
-      ALPHAFX_PLANS.globalRules.find((r) => r.label.includes("Profit split"))?.value ||
-      "80%";
+  window.renderChallengeSizeTabs = renderSizeTabs;
 
-    els.globalRules.innerHTML = ALPHAFX_PLANS.globalRules.map((rule) => {
-      let value = rule.value;
-      if (rule.label.includes("Profit split")) value = split;
-      const cls = rule.highlight ? " gold" : "";
-      return `
-        <li>
-          <span class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg></span>
-          <span class="rule-label">${rule.label}</span>
-          <span class="rule-value${cls}">${value}</span>
-        </li>`;
-    }).join("");
-
-    if (els.programExtras && program.extras) {
-      els.programExtras.innerHTML = program.extras
-        .map(
-          (e) =>
-            `<li><span class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg></span><span class="rule-label">${e}</span><span class="rule-value danger">Program</span></li>`
-        )
-        .join("");
-    }
+  function renderPlanIncludes() {
+    if (!els.planIncludes) return;
+    els.planIncludes.innerHTML = ALPHAFX_PLANS.planIncludes
+      .map((item) => {
+        const label = item.sub
+          ? `${item.text} <span class="rule-sub">${item.sub}</span>`
+          : item.text;
+        return `
+          <li>
+            <span class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg></span>
+            <span class="include-text${item.highlight ? " gold" : ""}">${label}</span>
+          </li>`;
+      })
+      .join("");
   }
 
   function renderPhaseTabs(program) {
@@ -78,9 +68,13 @@
     els.phaseTabs.innerHTML = program.phases
       .map(
         (ph, i) =>
-          `<button class="phase-tab${i === state.phaseIndex ? " active" : ""}" data-phase="${i}">${ph.name}</button>`
+          `<button type="button" class="phase-tab${i === state.phaseIndex ? " active" : ""}" data-phase="${i}">${ph.name}</button>`
       )
       .join("");
+  }
+
+  function metricRow(label, valueHtml) {
+    return `<tr><td>${label}</td><td>${valueHtml}</td></tr>`;
   }
 
   function renderMetrics(phase) {
@@ -88,39 +82,38 @@
     const rows = [];
 
     if (phase.profitTargetPct != null) {
-      rows.push({
-        label: "Profit target",
-        value: `${phase.profitTargetPct}% (${fmtMoney(pctOf(state.size, phase.profitTargetPct))})`,
-        highlight: true,
-      });
-    } else {
-      rows.push({ label: "Profit target", value: "None — stay within limits" });
+      const dollars = pctOf(state.size, phase.profitTargetPct);
+      rows.push(
+        metricRow(
+          "Profit target",
+          `<span class="metric-val">${phase.profitTargetPct}%</span><span class="metric-badge">$${dollars}</span>`
+        )
+      );
     }
 
     rows.push(
-      { label: "Max overall loss", value: `${phase.maxOverallLossPct}%`, highlight: true },
-      { label: "Max daily loss", value: `${phase.maxDailyLossPct}%`, highlight: true },
-      { label: "Leverage", value: `Up to ${phase.leverage}` },
-      { label: "Drawdown type", value: phase.drawdownType }
+      metricRow("Max overall loss", `<span class="metric-val">${phase.maxOverallLossPct}%</span>`),
+      metricRow("Max daily loss", `<span class="metric-val">${phase.maxDailyLossPct}%</span>`),
+      metricRow("Leverage", `<span class="metric-val">Up to ${phase.leverage}</span>`)
     );
 
-    if (phase.timeLimitDays) {
-      rows.push({ label: "Time limit", value: `${phase.timeLimitDays} days`, highlight: true });
-    }
-    if (phase.minTradingDays) {
-      rows.push({ label: "Min trading days", value: `${phase.minTradingDays} days` });
+    if (phase.profitSplit) {
+      rows.push(metricRow("Profit split", `<span class="metric-val gold">${phase.profitSplit}</span>`));
     }
 
-    els.metricsBody.innerHTML = rows
-      .map(
-        (r) =>
-          `<tr><td>${r.label}</td><td class="${r.highlight ? "highlight" : ""}">${r.value}</td></tr>`
-      )
-      .join("");
+    rows.push(metricRow("Drawdown type", `<span class="metric-val">${phase.drawdownType}</span>`));
 
-    if (els.phaseNote) {
-      els.phaseNote.textContent = phase.notes || "";
-      els.phaseNote.style.display = phase.notes ? "block" : "none";
+    if (phase.profitableDays) {
+      rows.push(metricRow("Profitable days", `<span class="metric-val">min ${phase.profitableDays}</span>`));
+    }
+
+    els.metricsBody.innerHTML = rows.join("");
+  }
+
+  function updatePrice() {
+    const price = getPrice(state.size, state.couponApplied);
+    if (els.challengePrice) {
+      els.challengePrice.textContent = `$${price.toFixed(2)}`;
     }
   }
 
@@ -129,30 +122,25 @@
     if (!program) return;
 
     if (state.phaseIndex >= program.phases.length) state.phaseIndex = 0;
-
     const phase = program.phases[state.phaseIndex];
-    const price = ALPHAFX_PLANS.pricing[state.size];
 
-    if (els.planTitle) els.planTitle.textContent = `${fmtMoney(state.size)} ${program.name}`;
-    if (els.planTagline) els.planTagline.textContent = program.tagline;
-    if (els.planBadge) {
-      els.planBadge.textContent = program.badge || "";
-      els.planBadge.style.display = program.badge ? "inline-block" : "none";
+    if (els.planPill) {
+      els.planPill.textContent = `${program.slug} · ${fmtMoney(state.size)}`;
     }
+    if (els.planTitle) {
+      els.planTitle.textContent = `${fmtMoney(state.size)} ${program.name}`;
+    }
+    if (els.planTagline) els.planTagline.textContent = program.tagline;
 
     renderPhaseTabs(program);
     renderMetrics(phase);
-
-    if (els.ctaPrice) els.ctaPrice.textContent = `$${price}`;
-    if (els.ctaProgram) {
-      els.ctaProgram.textContent = `${fmtMoney(state.size)} · ${program.name}`;
-    }
+    updatePrice();
   }
 
   function render() {
     renderProgramTabs();
     renderSizeTabs();
-    renderGlobalRules();
+    renderPlanIncludes();
     renderPlanDetail();
   }
 
@@ -169,7 +157,8 @@
       const btn = e.target.closest("[data-size]");
       if (!btn) return;
       state.size = parseInt(btn.dataset.size, 10);
-      render();
+      renderPlanDetail();
+      renderSizeTabs();
     });
 
     els.phaseTabs?.addEventListener("click", (e) => {
@@ -179,15 +168,47 @@
       renderPlanDetail();
     });
 
-    document.getElementById("buy-btn")?.addEventListener("click", () => {
+    document.getElementById("coupon-apply")?.addEventListener("click", () => {
+      const code = (els.couponInput?.value || "").trim().toUpperCase();
+      if (code === ALPHAFX_PLANS.promoCode || code === "ALPHA30") {
+        state.couponApplied = true;
+        updatePrice();
+      } else if (code) {
+        alert("Invalid coupon code");
+      }
+    });
+
+    document.getElementById("referral-apply")?.addEventListener("click", () => {
+      const ref = (els.referralInput?.value || "").trim();
+      if (ref) alert("Referral applied (demo)");
+    });
+
+    document.getElementById("copy-promo")?.addEventListener("click", () => {
+      navigator.clipboard?.writeText(ALPHAFX_PLANS.promoCode);
+    });
+
+    document.getElementById("pay-btn")?.addEventListener("click", () => {
+      const terms = document.getElementById("terms-check");
+      const refund = document.getElementById("refund-check");
+      if (!terms?.checked || !refund?.checked) {
+        alert("Please accept the Terms and Refund Policy.");
+        return;
+      }
       const program = getProgram(state.program);
       alert(
-        `AlphaFX — Coming soon\n\n${fmtMoney(state.size)} ${program.name}\n$${ALPHAFX_PLANS.pricing[state.size]}\n\nCheckout not wired yet.`
+        `AlphaFX — Coming soon\n\n${fmtMoney(state.size)} ${program.name}\n${els.challengePrice?.textContent}\n\nPayment not wired yet.`
       );
+    });
+
+    document.getElementById("promo-buy")?.addEventListener("click", () => {
+      if (els.couponInput) els.couponInput.value = ALPHAFX_PLANS.promoCode;
+      state.couponApplied = true;
+      updatePrice();
+      document.getElementById("pay-btn")?.scrollIntoView({ behavior: "smooth" });
     });
   }
 
-  const dateEl = document.getElementById("topbar-date");
+  const dateEl = document.getElementById("page-date");
   if (dateEl) {
     dateEl.textContent = new Date()
       .toLocaleDateString("en-US", {
@@ -202,5 +223,7 @@
   if (document.body.dataset.page === "challenges") {
     render();
     bindEvents();
+    state.couponApplied = true;
+    updatePrice();
   }
 })();

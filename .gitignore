@@ -1,0 +1,6 @@
+backend/.venv/
+backend/.env
+backend/alphafx.db
+backend/**/__pycache__/
+backend/**/*.pyc
+.DS_Store
