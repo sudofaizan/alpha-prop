@@ -18,6 +18,7 @@ BACKEND="$ROOT/backend"
 WEBSITE="$ROOT/website"
 SERVICE_NAME="alphafx-api"
 NGINX_CONF="/etc/nginx/conf.d/alphafx.conf"
+WEB_ROOT="/var/www/alphafx"
 
 log() { printf '\n==> %s\n' "$*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -149,8 +150,10 @@ cat > "$WEBSITE/js/config.js" <<'EOF'
 window.ALPHAFX_API = window.ALPHAFX_API || window.location.origin;
 EOF
 
-log "Setting website file permissions for nginx…"
-chmod -R a+rX "$WEBSITE"
+log "Publishing static site to ${WEB_ROOT}…"
+sudo mkdir -p "$WEB_ROOT"
+sudo rsync -a --delete "$WEBSITE/" "$WEB_ROOT/"
+sudo chmod -R a+rX "$WEB_ROOT"
 
 # ── systemd ───────────────────────────────────────────────────────────────────
 log "Installing systemd service: ${SERVICE_NAME}…"
@@ -178,13 +181,16 @@ sudo systemctl restart "${SERVICE_NAME}"
 
 # ── nginx ─────────────────────────────────────────────────────────────────────
 log "Configuring nginx…"
+# Amazon Linux ships default.conf with server_name _ — remove it or our vhost is ignored
+sudo rm -f /etc/nginx/conf.d/default.conf
+
 sudo tee "$NGINX_CONF" > /dev/null <<EOF
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
     server_name _;
 
-    root ${WEBSITE};
+    root ${WEB_ROOT};
     index dashboard.html index.html;
 
     location /api/ {
@@ -222,7 +228,8 @@ sudo systemctl restart nginx
 log "Running health checks…"
 sleep 2
 curl -sf http://127.0.0.1:8000/health | grep -q '"status":"ok"' || die "API health check failed"
-curl -sf -o /dev/null http://127.0.0.1/register.html || die "nginx static check failed"
+STATIC_CODE="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/register.html 2>/dev/null || echo '000')"
+[[ "$STATIC_CODE" == "200" ]] || die "nginx static check failed (GET /register.html → HTTP ${STATIC_CODE}). Try: curl -v http://127.0.0.1/register.html"
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 cat <<EOF
