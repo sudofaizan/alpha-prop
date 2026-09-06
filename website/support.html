@@ -2,44 +2,97 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#13131a">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Support — AlphaFX</title>
-    <link rel="stylesheet" href="css/capiffy/dbe7481feefb38d2.css">
+  <link rel="stylesheet" href="css/capiffy/dbe7481feefb38d2.css">
   <link rel="stylesheet" href="css/capiffy/59f9d657f37015b6.css">
   <link rel="stylesheet" href="css/capiffy/c1bee8ab903b382d.css">
   <link rel="stylesheet" href="css/capiffy/3ac04c147fc81d91.css">
   <link rel="stylesheet" href="css/capiffy/3c6a7efccbedf43f.css">
   <link rel="stylesheet" href="css/fonts.css">
-  <link rel="stylesheet" href="css/challenges-bridge.css">
+  <link rel="stylesheet" href="css/support-page.css">
 </head>
-<body data-page="support" data-title="Support">
+<body data-page="support" data-title="Support" data-no-wrap="true">
   <div id="app-root">
-    <div class="page-top-row">
-      <div>
-        <span class="badge-pill">HELP</span>
-        <div class="page-intro">
-          <h2>Support</h2>
-          <p>Open a ticket and talk to a human. Average response time is under two hours.</p>
+    <div class="pt-page dfx-scope" data-screen-label="Support">
+      <header class="pt-header">
+        <div class="pt-header-body">
+          <span class="pt-header-eyebrow">Help</span>
+          <h1 class="pt-header-title">Support</h1>
+          <p class="pt-header-sub">Open a ticket and talk to a human. Average response time is under two hours.</p>
         </div>
-      </div>
-      <button class="btn-gold-sm" style="margin-top:0">+ New ticket</button>
-    </div>
+        <div class="pt-header-actions">
+          <button type="button" class="pt-btn pt-btn--primary" id="support-new-ticket-btn" title="Open a new support ticket">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+            New ticket
+          </button>
+        </div>
+      </header>
 
-    <div class="support-layout">
-      <div class="support-list">
-        <input type="text" placeholder="Search tickets...">
-        <div class="empty-state" style="padding:2rem 0;background:transparent;border:none">
-          <p style="font-size:0.82rem">No tickets yet</p>
-        </div>
-      </div>
-      <div class="support-main">
-        <div class="empty-state" style="background:transparent;border:none">
-          <div class="empty-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <div class="pt-card pt-card--flush support-grid pt-reveal">
+        <aside class="support-list">
+          <div class="support-list-search">
+            <input class="dfx-input" id="support-search" type="search" placeholder="Search tickets…" aria-label="Search tickets">
           </div>
-          <h3>Select a conversation</h3>
-          <p>Choose a ticket from the list to open the thread, or start a new conversation.</p>
+          <div class="support-list-body" id="support-list-body">
+            <p class="support-empty-list">No tickets yet</p>
+          </div>
+        </aside>
+        <section class="support-thread" id="support-thread" aria-label="Conversation">
+          <div class="pt-empty">
+            <div class="pt-empty-icon">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </div>
+            <div class="pt-empty-title">Select a conversation</div>
+            <p class="pt-empty-sub">Choose a ticket from the list to open the thread, or start a new conversation.</p>
+          </div>
+        </section>
+      </div>
+
+      <div class="support-modal-overlay" id="support-modal" aria-hidden="true">
+        <div class="pt-card pt-card--gold-edge support-modal" role="dialog" aria-modal="true" aria-labelledby="support-modal-title">
+          <div class="support-modal-head">
+            <h3 class="pt-card-title" id="support-modal-title">New support ticket</h3>
+            <button type="button" class="pt-btn pt-btn--ghost pt-btn--icon" data-close-ticket-modal aria-label="Close">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+            </button>
+          </div>
+          <form class="dfx-form" id="support-ticket-form">
+            <div class="dfx-form-field">
+              <label class="dfx-form-label" for="ticket-subject">Subject</label>
+              <input class="dfx-input" id="ticket-subject" type="text" placeholder="Briefly describe the issue (min 5 characters)" required minlength="5">
+            </div>
+            <div class="dfx-form-field">
+              <label class="dfx-form-label" for="ticket-priority">Priority</label>
+              <select class="dfx-select" id="ticket-priority">
+                <option value="LOW">Low</option>
+                <option value="MEDIUM" selected>Medium</option>
+                <option value="HIGH">High</option>
+                <option value="URGENT">Urgent</option>
+              </select>
+            </div>
+            <div class="dfx-form-field">
+              <label class="dfx-form-label" for="ticket-message">Message</label>
+              <textarea class="dfx-textarea" id="ticket-message" rows="5" placeholder="Tell us what's going on… (min 10 characters)" required minlength="10"></textarea>
+            </div>
+            <div class="dfx-form-field">
+              <label class="dfx-form-label">Attachments <span style="text-transform:none;letter-spacing:0;color:var(--text-mute);font-weight:500;">(up to 3, optional)</span></label>
+              <label for="ticket-files" class="pt-btn pt-btn--ghost" style="cursor:pointer;align-self:flex-start;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6.21M16 3h5v5M10 14L21 3"></path></svg>
+                Add files
+              </label>
+              <input id="ticket-files" type="file" multiple accept="image/*,application/pdf" hidden>
+              <div class="support-file-list" id="ticket-file-list"></div>
+            </div>
+            <div class="support-modal-actions">
+              <p id="ticket-form-hint" class="support-form-hint" hidden></p>
+              <button type="button" class="pt-btn pt-btn--ghost" data-close-ticket-modal>Cancel</button>
+              <button type="submit" class="pt-btn pt-btn--primary" id="ticket-submit-btn" disabled aria-disabled="true">Submit ticket</button>
+            </div>
+          </form>
         </div>
       </div>
     </div>
@@ -48,5 +101,6 @@
   <script src="js/config.js"></script>
   <script src="js/api.js"></script>
   <script src="js/auth.js"></script>
+  <script src="js/support.js"></script>
 </body>
 </html>

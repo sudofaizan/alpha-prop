@@ -171,8 +171,11 @@
 
   function updatePayButton() {
     if (!els.payBtn) return;
-    const termsOk = [...els.termsChecks].every((c) => c.checked);
+    const checks = root?.querySelectorAll(".hp-pm-terms input[type='checkbox']") || els.termsChecks;
+    const termsOk = [...checks].every((c) => c.checked);
     els.payBtn.disabled = !termsOk;
+    els.payBtn.setAttribute("aria-disabled", termsOk ? "false" : "true");
+    els.payBtn.classList.toggle("is-ready", termsOk);
   }
 
   function updateApplyButtons() {
@@ -223,7 +226,9 @@
     els.referralApply?.addEventListener("click", () => {
       if ((els.referralInput?.value || "").trim()) alert("Referral saved (demo)");
     });
-    els.termsChecks.forEach((cb) => cb.addEventListener("change", updatePayButton));
+    root.querySelectorAll('.hp-pm-terms-row input[type="checkbox"]').forEach((cb) => {
+      cb.addEventListener("change", updatePayButton);
+    });
     els.payBtn?.addEventListener("click", async () => {
       els.payBtn.disabled = true;
       try {

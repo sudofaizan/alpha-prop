@@ -1,0 +1,202 @@
+/* Support page — Capiffy-style inbox + modal */
+.dfx-scope .support-grid {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  height: clamp(460px, calc(100vh - 210px), 800px);
+  overflow: hidden;
+}
+
+.dfx-scope .support-grid > * {
+  min-height: 0;
+}
+
+.dfx-scope .support-list {
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+}
+
+.dfx-scope .support-list-search {
+  padding: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.dfx-scope .support-list-search .dfx-input {
+  font-size: 13px;
+}
+
+.dfx-scope .support-list-body {
+  flex: 1 1 0;
+  overflow-y: auto;
+}
+
+.dfx-scope .support-empty-list {
+  margin: 0;
+  padding: 32px;
+  text-align: center;
+  color: var(--text-mute);
+  font-size: 13px;
+  font-family: var(--font-body);
+}
+
+.dfx-scope .support-ticket-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-family: var(--font-body);
+  transition: background 0.18s ease;
+}
+
+.dfx-scope .support-ticket-row.is-active,
+.dfx-scope .support-ticket-row:hover {
+  background: rgba(255, 215, 0, 0.04);
+}
+
+.dfx-scope .support-ticket-subject {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.dfx-scope .support-ticket-meta {
+  font-size: 11px;
+  color: var(--text-mute);
+}
+
+.dfx-scope .support-thread {
+  display: grid;
+  place-items: center;
+  padding: 32px 24px;
+}
+
+.dfx-scope .support-thread .pt-empty,
+.dfx-scope .support-thread-view {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: none;
+  gap: 10px;
+  max-width: 520px;
+  width: 100%;
+}
+
+.dfx-scope .support-thread-view {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.dfx-scope .support-thread-head {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.dfx-scope .support-thread-head h3 {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 900;
+  color: var(--text);
+}
+
+.dfx-scope .support-thread-message {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+}
+
+.dfx-scope .support-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: none;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(8px);
+}
+
+.dfx-scope .support-modal-overlay.is-open {
+  display: grid;
+}
+
+.dfx-scope .support-modal {
+  width: 100%;
+  max-width: 480px;
+  padding: 24px;
+  box-shadow: rgba(0, 0, 0, 0.6) 0 24px 60px, rgba(255, 255, 255, 0.04) 0 1px 0 inset;
+}
+
+.dfx-scope .support-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.dfx-scope .support-modal-head .pt-card-title {
+  margin: 0;
+}
+
+.dfx-scope .support-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.dfx-scope .support-form-hint {
+  flex: 1 1 100%;
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--gold);
+  font-family: var(--font-body);
+  text-align: left;
+}
+
+@media (min-width: 480px) {
+  .dfx-scope .support-form-hint {
+    flex: 1 1 auto;
+    margin: 0 auto 0 0;
+  }
+}
+
+.dfx-scope .support-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.dfx-scope .support-file-item {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+@media (max-width: 720px) {
+  .dfx-scope .support-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    height: clamp(460px, calc(100vh - 150px), 820px);
+  }
+
+  .dfx-scope .support-list {
+    border-right: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    max-height: 220px;
+  }
+}
