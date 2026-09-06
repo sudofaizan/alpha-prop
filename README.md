@@ -180,6 +180,7 @@ curl -I http://127.0.0.1/register.html
 
 | Problem | Fix |
 |---------|-----|
+| `curl` package conflict on dnf | Fixed in latest `ec2_deploy.sh` — run `git pull && ./ec2_deploy.sh` |
 | Site not loading | Security group must allow TCP **80** |
 | CORS errors | Set `ALPHAFX_PUBLIC_URL` to exact browser URL, re-run `./ec2_deploy.sh` |
 | API 502 | `sudo systemctl restart alphafx-api` then check logs |

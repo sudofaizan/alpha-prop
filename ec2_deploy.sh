@@ -30,20 +30,54 @@ fi
 
 command -v sudo >/dev/null || die "sudo is required"
 
+install_os_packages() {
+  local pkgs=()
+  command -v git >/dev/null || pkgs+=(git)
+  command -v nginx >/dev/null || pkgs+=(nginx)
+  # Amazon Linux ships curl-minimal; full "curl" package conflicts — do not install it
+  if ! command -v curl >/dev/null; then
+    pkgs+=(curl-minimal)
+  fi
+  if ! command -v python3.11 >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+    pkgs+=(python3.11 python3.11-pip)
+  fi
+
+  if command -v dnf >/dev/null; then
+    sudo dnf update -y
+    if ((${#pkgs[@]})); then
+      sudo dnf install -y "${pkgs[@]}" || {
+        # Fallback if python3.11 unavailable on this AMI
+        local fallback=()
+        for p in "${pkgs[@]}"; do
+          [[ "$p" == python3.11* ]] && continue
+          fallback+=("$p")
+        done
+        if ! command -v python3 >/dev/null; then
+          fallback+=(python3 python3-pip)
+        fi
+        ((${#fallback[@]})) && sudo dnf install -y "${fallback[@]}"
+      }
+    fi
+    if ! command -v python3.11 >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+      sudo dnf install -y python3 python3-pip
+    fi
+  elif command -v yum >/dev/null; then
+    sudo yum update -y
+    if ((${#pkgs[@]})); then
+      sudo yum install -y "${pkgs[@]}"
+    fi
+    if ! command -v python3 >/dev/null; then
+      sudo yum install -y python3 python3-pip
+    fi
+  else
+    die "Unsupported OS — use Amazon Linux 2 or 2023"
+  fi
+}
+
 # ── OS packages ──────────────────────────────────────────────────────────────
 log "Installing system packages (nginx, git, Python)…"
-if command -v dnf >/dev/null; then
-  sudo dnf update -y
-  sudo dnf install -y git nginx curl
-  if ! command -v python3.11 >/dev/null 2>&1; then
-    sudo dnf install -y python3.11 python3.11-pip 2>/dev/null || sudo dnf install -y python3 python3-pip
-  fi
-elif command -v yum >/dev/null; then
-  sudo yum update -y
-  sudo yum install -y git nginx curl python3 python3-pip
-else
-  die "Unsupported OS — use Amazon Linux 2 or 2023"
-fi
+install_os_packages
+command -v curl >/dev/null || die "curl not found (expected curl-minimal on Amazon Linux)"
 
 if command -v python3.11 >/dev/null; then
   PYTHON=python3.11
@@ -75,7 +109,7 @@ if [[ "$PUBLIC_ORIGIN" != http* ]]; then
   PUBLIC_ORIGIN="http://${PUBLIC_ORIGIN}"
 fi
 
-SECRET_KEY="${ALPHAFX_SECRET_KEY:-$(openssl rand -hex 32)}"
+SECRET_KEY="${ALPHAFX_SECRET_KEY:-$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')}"
 ADMIN_PASSWORD="${ALPHAFX_ADMIN_PASSWORD:-AdminFX2026!}"
 
 log "Public URL / CORS origin: $PUBLIC_ORIGIN"
