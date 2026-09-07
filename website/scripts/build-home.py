@@ -38,6 +38,9 @@ HEAD = """<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0a0a0f">
   <meta name="description" content="AlphaFX — simulated funded trading accounts. Up to $200K backing, 80% profit split.">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>AlphaFX — Your Edge. Our Capital.</title>
   <link rel="stylesheet" href="css/capiffy/dbe7481feefb38d2.css">
   <link rel="stylesheet" href="css/capiffy/6bc51c9a6721e22e.css">
@@ -47,14 +50,18 @@ HEAD = """<!DOCTYPE html>
 </head>
 <body data-page="home">
 {content}
-  <script src="js/config.js"></script>
-  <script src="js/api.js"></script>
-  <script src="js/home.js?v=20260907b"></script>
+  <script src="js/config.js?v=20260907i"></script>
+  <script src="js/api.js?v=20260907i"></script>
+  <script src="js/home.js?v=20260907c"></script>
 </body>
 </html>
 """
 
 IMG_RE = re.compile(r'\./home page _files/(CPF-2026-\d+\.png)')
+PROOF_SECTION_RE = re.compile(
+    r'<section class="hp-proof"[^>]*>.*?</section>',
+    re.DOTALL,
+)
 
 
 def extract_content(html: str) -> str | None:
@@ -70,6 +77,7 @@ def extract_content(html: str) -> str | None:
 
 
 def transform(content: str) -> str:
+    content = PROOF_SECTION_RE.sub("", content)
     content = IMG_RE.sub(r"img/home/\1", content)
     for old, new in LINK_REPLACEMENTS:
         content = content.replace(old, new)

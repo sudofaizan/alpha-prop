@@ -306,6 +306,23 @@ server {
         proxy_pass http://127.0.0.1:8000;
     }
 
+    location = / {
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
+        try_files /home.html =404;
+    }
+
+    location ~* \.html$ {
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
+    }
+
+    location = /js/auth.js {
+        add_header Cache-Control "no-cache, must-revalidate" always;
+    }
+
     location / {
         try_files \$uri \$uri/ =404;
     }
