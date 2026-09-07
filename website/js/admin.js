@@ -11,10 +11,12 @@
     return ["live", "users", "accounts", "orders"].includes(hash) ? hash : "live";
   }
 
-  function setActiveTab(tab, { skipHash = false } = {}) {
+  function setActiveTab(tab, { skipHash = false, keepDetail = false } = {}) {
     activeTab = tab;
-    userDetailId = null;
-    userDetailAccountId = null;
+    if (!keepDetail) {
+      userDetailId = null;
+      userDetailAccountId = null;
+    }
     if (!skipHash) {
       const next = `#${tab}`;
       if (window.location.hash !== next) history.replaceState(null, "", next);
@@ -270,67 +272,108 @@
     }
   }
 
-  document.getElementById("admin-tabs")?.addEventListener("click", (e) => {
-    const btn = e.target.closest(".admin-tab");
-    if (!btn) return;
-    setActiveTab(btn.dataset.tab || "live");
-    renderTab().catch(console.error);
-  });
+  async function handleAdminClick(e) {
+    const tabBtn = e.target.closest("#admin-tabs .admin-tab");
+    if (tabBtn) {
+      setActiveTab(tabBtn.dataset.tab || "live");
+      renderTab().catch(console.error);
+      return;
+    }
 
-  document.getElementById("admin-panel")?.addEventListener("click", async (e) => {
+    const panel = e.target.closest("#admin-panel");
+    if (!panel) return;
+
     const closeBtn = e.target.closest("[data-admin-close]");
     if (closeBtn) {
+      e.preventDefault();
       adminCloseTrade(Number(closeBtn.dataset.adminClose));
       return;
     }
+
     const statsBtn = e.target.closest("[data-user-stats]");
     if (statsBtn) {
-      setActiveTab("users");
+      e.preventDefault();
+      setActiveTab("users", { keepDetail: true });
       await renderUserDetail(Number(statsBtn.dataset.userStats));
       return;
     }
+
     if (e.target.closest("[data-admin-back]")) {
+      e.preventDefault();
       userDetailId = null;
       userDetailAccountId = null;
       await renderUsers();
       return;
     }
-    const blockId = e.target.dataset.block;
-    const unblockId = e.target.dataset.unblock;
-    if (blockId) {
-      const reason = prompt("Block reason (optional):") || "Blocked by admin";
-      await window.AlphaFXApi.adminBlockUser(blockId, true, reason);
-      await loadStats();
-      if (userDetailId) await renderUserDetail(userDetailId);
-      else await renderTab();
-    }
-    if (unblockId) {
-      await window.AlphaFXApi.adminBlockUser(unblockId, false, null);
-      await loadStats();
-      if (userDetailId) await renderUserDetail(userDetailId);
-      else await renderTab();
-    }
-  });
 
-  document.getElementById("admin-panel")?.addEventListener("change", async (e) => {
+    const blockBtn = e.target.closest("[data-block]");
+    if (blockBtn) {
+      e.preventDefault();
+      const reason = prompt("Block reason (optional):") || "Blocked by admin";
+      try {
+        await window.AlphaFXApi.adminBlockUser(blockBtn.dataset.block, true, reason);
+        await loadStats();
+        if (userDetailId) await renderUserDetail(userDetailId);
+        else await renderTab();
+      } catch (err) {
+        alert(err.message || "Block failed");
+      }
+      return;
+    }
+
+    const unblockBtn = e.target.closest("[data-unblock]");
+    if (unblockBtn) {
+      e.preventDefault();
+      try {
+        await window.AlphaFXApi.adminBlockUser(unblockBtn.dataset.unblock, false, null);
+        await loadStats();
+        if (userDetailId) await renderUserDetail(userDetailId);
+        else await renderTab();
+      } catch (err) {
+        alert(err.message || "Unblock failed");
+      }
+    }
+  }
+
+  async function handleAdminChange(e) {
     if (e.target.id === "admin-account-select" && userDetailId) {
       userDetailAccountId = Number(e.target.value) || null;
       await renderUserDetail(userDetailId);
     }
-  });
+  }
 
-  document.addEventListener("DOMContentLoaded", () => {
+  let adminEventsBound = false;
+  let adminBooted = false;
+
+  function bindAdminEvents() {
+    if (adminEventsBound) return;
+    adminEventsBound = true;
+    document.addEventListener("click", handleAdminClick);
+    document.addEventListener("change", handleAdminChange);
+  }
+
+  async function bootAdmin() {
+    if (adminBooted) return;
+    if (!document.getElementById("admin-panel")) return;
+    adminBooted = true;
+    bindAdminEvents();
     activeTab = tabFromHash();
     setActiveTab(activeTab, { skipHash: true });
-    setTimeout(async () => {
-      try {
-        await loadStats();
-        await renderTab();
-      } catch (err) {
-        setPanel(`<div class="pt-card" style="padding:20px;color:var(--danger);">${err.message}</div>`);
-      }
-    }, 200);
+    try {
+      await loadStats();
+      await renderTab();
+    } catch (err) {
+      setPanel(`<div class="pt-card" style="padding:20px;color:var(--danger);">${err.message}</div>`);
+    }
+  }
+
+  window.addEventListener("alphafx:layout-ready", () => {
+    setTimeout(() => bootAdmin().catch(console.error), 0);
   });
+
+  if (document.querySelector("[data-portal]")) {
+    setTimeout(() => bootAdmin().catch(console.error), 0);
+  }
 
   window.addEventListener("hashchange", () => {
     const tab = tabFromHash();
