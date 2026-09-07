@@ -14,8 +14,9 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  min-height: calc(100vh - 120px);
-  max-height: calc(100vh - 100px);
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
   margin: -8px -12px 0;
   background: var(--trade-bg);
   border: 1px solid var(--trade-line);
@@ -31,6 +32,7 @@
   border-bottom: 1px solid var(--trade-line);
   background: var(--trade-panel);
   flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .trade-symbol-tabs {
@@ -120,9 +122,8 @@
 .trade-main {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) 280px;
-  min-height: 480px;
-  max-height: calc(100vh - 180px);
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   align-items: stretch;
   overflow: hidden;
 }
@@ -247,9 +248,8 @@
 .trade-chart-wrap {
   position: relative;
   background: #0f0f14;
-  min-height: 420px;
+  min-height: 0;
   height: 100%;
-  max-height: calc(100vh - 200px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -336,6 +336,8 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .trade-ticket-tabs {
@@ -509,12 +511,27 @@
 .trade-bottom {
   border-top: 1px solid var(--trade-line);
   background: var(--trade-panel);
-  min-height: 160px;
+  flex: 0 0 auto;
+  min-height: 140px;
+  max-height: 38vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.trade-bottom-body {
+  padding: 16px;
+  color: var(--trade-muted);
+  font-size: 13px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .trade-bottom-tabs {
   display: flex;
   border-bottom: 1px solid var(--trade-line);
+  flex: 0 0 auto;
 }
 
 .trade-bottom-tabs button {
@@ -531,10 +548,13 @@
   color: var(--trade-text);
 }
 
-.trade-bottom-body {
-  padding: 16px;
-  color: var(--trade-muted);
-  font-size: 13px;
+/* Trade page: fill viewport — no scroll gap under chart */
+body[data-page="trade"] .dashboard-main {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+  padding: 8px 12px 12px !important;
 }
 
 @media (max-width: 960px) {

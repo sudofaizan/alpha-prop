@@ -88,8 +88,10 @@
 
   function measureChart(container) {
     const body = chartBodyEl(container);
-    const w = Math.max(body?.clientWidth || container?.clientWidth || 320, 200);
-    const h = Math.max(body?.clientHeight || 360, 280);
+    const el = body || container;
+    const rect = el?.getBoundingClientRect();
+    const w = Math.max(Math.floor(rect?.width || el?.clientWidth || 320), 200);
+    const h = Math.max(Math.floor(rect?.height || el?.clientHeight || 360), 200);
     return { w, h };
   }
 
