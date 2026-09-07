@@ -17,6 +17,8 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 BACKEND="$ROOT/backend"
 WEBSITE="$ROOT/website"
 SERVICE_NAME="alphafx-api"
+TICK_HUB_SERVICE="alphafx-tick-hub"
+TICK_HUB_DIR="$ROOT/services/tick-hub"
 NGINX_CONF="/etc/nginx/conf.d/alphafx.conf"
 WEB_ROOT="/var/www/alphafx"
 
@@ -126,6 +128,10 @@ source .venv/bin/activate
 pip install -q --upgrade pip
 pip install -q -r requirements.txt
 
+# Tick hub: same EC2 by default (mock until Windows MT5 EA is wired)
+TICK_HUB_MOCK="${ALPHAFX_TICK_HUB_MOCK:-1}"
+TICK_HUB_WS="${ALPHAFX_TICK_HUB_WS:-ws://127.0.0.1:9002}"
+
 log "Writing backend/.env…"
 cat > .env <<EOF
 ALPHAFX_ENV=production
@@ -135,8 +141,8 @@ ALPHAFX_CORS_ORIGINS=${PUBLIC_ORIGIN}
 ALPHAFX_ADMIN_EMAIL=admin@alphafx.com
 ALPHAFX_ADMIN_PASSWORD=${ADMIN_PASSWORD}
 ALPHAFX_ADMIN_NAME=AlphaFX Admin
-ALPHAFX_TICK_MOCK=true
-ALPHAFX_TICK_HUB_WS=
+ALPHAFX_TICK_MOCK=false
+ALPHAFX_TICK_HUB_WS=${TICK_HUB_WS}
 EOF
 chmod 600 .env
 
@@ -156,6 +162,49 @@ log "Publishing static site to ${WEB_ROOT}…"
 sudo mkdir -p "$WEB_ROOT"
 sudo rsync -a --delete "$WEBSITE/" "$WEB_ROOT/"
 sudo chmod -R a+rX "$WEB_ROOT"
+
+# ── Tick hub (systemd) ────────────────────────────────────────────────────────
+log "Setting up tick hub service…"
+if [[ -d "$TICK_HUB_DIR" ]]; then
+  if [[ ! -d "$TICK_HUB_DIR/.venv" ]]; then
+    "$PYTHON" -m venv "$TICK_HUB_DIR/.venv"
+  fi
+  # shellcheck disable=SC1091
+  source "$TICK_HUB_DIR/.venv/bin/activate"
+  pip install -q --upgrade pip
+  pip install -q -r "$TICK_HUB_DIR/requirements.txt"
+  deactivate
+
+  sudo tee "/etc/systemd/system/${TICK_HUB_SERVICE}.service" > /dev/null <<EOF
+[Unit]
+Description=AlphaFX Tick Hub (MT5 ingest + WebSocket)
+After=network.target
+
+[Service]
+User=$(whoami)
+Group=$(id -gn)
+WorkingDirectory=${TICK_HUB_DIR}
+Environment=TICK_HUB_MOCK=${TICK_HUB_MOCK}
+Environment=PATH=${TICK_HUB_DIR}/.venv/bin:/usr/bin
+ExecStart=${TICK_HUB_DIR}/.venv/bin/python hub.py --mock
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  # When mock is off, run ingest-only (real ticks from MT5 EA on TCP :9001)
+  if [[ "$TICK_HUB_MOCK" != "1" && "$TICK_HUB_MOCK" != "true" ]]; then
+    sudo sed -i 's/ hub.py --mock/ hub.py/' "/etc/systemd/system/${TICK_HUB_SERVICE}.service"
+  fi
+
+  sudo systemctl daemon-reload
+  sudo systemctl enable "${TICK_HUB_SERVICE}"
+  sudo systemctl restart "${TICK_HUB_SERVICE}"
+else
+  log "No services/tick-hub — skipping tick hub systemd"
+fi
 
 # ── systemd ───────────────────────────────────────────────────────────────────
 log "Installing systemd service: ${SERVICE_NAME}…"
@@ -239,6 +288,9 @@ sudo systemctl restart nginx
 log "Running health checks…"
 sleep 2
 curl -sf http://127.0.0.1:8000/health | grep -q '"status":"ok"' || die "API health check failed"
+if [[ -d "$TICK_HUB_DIR" ]]; then
+  curl -sf http://127.0.0.1:9003/health | grep -q '"status":"ok"' || die "Tick hub health check failed (port 9003)"
+fi
 STATIC_CODE="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/register.html 2>/dev/null || echo '000')"
 [[ "$STATIC_CODE" == "200" ]] || die "nginx static check failed (GET /register.html → HTTP ${STATIC_CODE}). Try: curl -v http://127.0.0.1/register.html"
 
@@ -262,8 +314,11 @@ cat <<EOF
 
 Useful commands:
   sudo systemctl status ${SERVICE_NAME}
+  sudo systemctl status ${TICK_HUB_SERVICE}
   sudo journalctl -u ${SERVICE_NAME} -f
+  sudo journalctl -u ${TICK_HUB_SERVICE} -f
   sudo tail -f /var/log/nginx/error.log
+  curl -s http://127.0.0.1:9003/health
 
 To update after git pull:
   cd ${ROOT} && git pull && ${ROOT}/ec2_deploy.sh
