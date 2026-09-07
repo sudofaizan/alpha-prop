@@ -226,6 +226,22 @@
     return series;
   }
 
+  function syncTicketStopsFromChart({ sl, tp, slSaved, tpSaved, dragging }) {
+    const slEl = document.getElementById("trade-sl");
+    const tpEl = document.getElementById("trade-tp");
+    const sym = activeSymbol;
+    if (slEl) {
+      if (slSaved || dragging) slEl.value = sl != null ? fmtPrice(sym, sl) : "";
+      else if (!dragging) slEl.value = "";
+      slEl.placeholder = slSaved || dragging ? "" : "—";
+    }
+    if (tpEl) {
+      if (tpSaved || dragging) tpEl.value = tp != null ? fmtPrice(sym, tp) : "";
+      else if (!dragging) tpEl.value = "";
+      tpEl.placeholder = tpSaved || dragging ? "" : "—";
+    }
+  }
+
   function chartPositionsContext() {
     return {
       activeSymbol,
@@ -237,6 +253,7 @@
       barBuffer,
       fallbackTime: () => barBuffer[barBuffer.length - 1]?.time,
       closePosition: (id) => closePosition(id),
+      syncTicketStops: syncTicketStopsFromChart,
     };
   }
 

@@ -430,6 +430,11 @@
   background: #22c55e;
 }
 
+.cpf-pos-row.is-draft .cpf-pos-tag {
+  opacity: 0.82;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+
 .cpf-pos-tag::after {
   content: "";
   position: absolute;

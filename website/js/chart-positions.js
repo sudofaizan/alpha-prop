@@ -1,8 +1,9 @@
 /**
  * Open position overlays — Capify-exact entry / SL / TP lines + floating pill.
+ * SL/TP always visible; drag to set (even when not saved on trade yet).
  */
 (function () {
-  const HIT_PX = 16;
+  const HIT_PX = 18;
   const LC = () => window.LightweightCharts;
 
   const COLORS = {
@@ -26,6 +27,7 @@
   let pendingOverlays = new Map();
   let drag = null;
   let rangeSubscribed = false;
+  let dragHost = null;
 
   function ctx() {
     return getContext?.() || {};
@@ -44,12 +46,36 @@
     return pos.tp != null && pos.tp !== "";
   }
 
-  function slPrice(pos) {
-    return hasSl(pos) ? Number(pos.sl) : null;
+  /** Capify-style default distance from entry when SL/TP not set yet. */
+  function defaultDelta(symbol, side, kind) {
+    const meta = ctx().symbolMeta?.[symbol];
+    const tick = meta?.tick_size || 0.01;
+    const isBuy = String(side).toUpperCase() === "BUY";
+    let dist;
+    if (symbol === "XAUUSD") dist = kind === "sl" ? 7 : 2.5;
+    else if (symbol === "BTCUSD") dist = kind === "sl" ? 900 : 350;
+    else if (symbol === "USDJPY") dist = kind === "sl" ? 0.35 : 0.15;
+    else dist = kind === "sl" ? tick * 120 : tick * 60;
+    if (isBuy) return kind === "sl" ? -dist : dist;
+    return kind === "sl" ? dist : -dist;
   }
 
-  function tpPrice(pos) {
-    return hasTp(pos) ? Number(pos.tp) : null;
+  function defaultSl(pos) {
+    return Number(pos.entry) + defaultDelta(pos.symbol, pos.side, "sl");
+  }
+
+  function defaultTp(pos) {
+    return Number(pos.entry) + defaultDelta(pos.symbol, pos.side, "tp");
+  }
+
+  function slPrice(pos, savedOnly = false) {
+    if (hasSl(pos)) return Number(pos.sl);
+    return savedOnly ? null : defaultSl(pos);
+  }
+
+  function tpPrice(pos, savedOnly = false) {
+    if (hasTp(pos)) return Number(pos.tp);
+    return savedOnly ? null : defaultTp(pos);
   }
 
   function fmtPnl(pnl) {
@@ -80,10 +106,20 @@
 
   function findHit(y) {
     for (const [id, o] of overlays) {
-      if (o.slVal != null && hitLine(y, o.slVal)) return { id, kind: "sl" };
-      if (o.tpVal != null && hitLine(y, o.tpVal)) return { id, kind: "tp" };
+      if (hitLine(y, o.slVal)) return { id, kind: "sl" };
+      if (hitLine(y, o.tpVal)) return { id, kind: "tp" };
     }
     return null;
+  }
+
+  function notifyTicket(o) {
+    ctx().syncTicketStops?.({
+      sl: o.slVal,
+      tp: o.tpVal,
+      slSaved: o.slSaved,
+      tpSaved: o.tpSaved,
+      dragging: !!drag,
+    });
   }
 
   function removePendingOverlay(id) {
@@ -124,12 +160,16 @@
     if (overlayRoot) overlayRoot.innerHTML = "";
   }
 
-  function createLine(price, color, style, axisColor, textColor) {
+  function lineStyle(saved) {
+    return saved ? LC().LineStyle.Solid : LC().LineStyle.Dotted;
+  }
+
+  function createLine(price, color, saved, axisColor, textColor) {
     return series.createPriceLine({
       price,
       color,
       lineWidth: 1,
-      lineStyle: style,
+      lineStyle: lineStyle(saved),
       axisLabelVisible: true,
       title: "",
       axisLabelColor: axisColor,
@@ -158,9 +198,9 @@
     return row;
   }
 
-  function buildTag(kind, posId) {
+  function buildTag(kind, posId, saved) {
     const row = document.createElement("div");
-    row.className = `cpf-pos-row cpf-pos-row--${kind}`;
+    row.className = `cpf-pos-row cpf-pos-row--${kind}${saved ? "" : " is-draft"}`;
     row.dataset.posId = String(posId);
     row.dataset.kind = kind;
     row.innerHTML = `<span class="cpf-pos-tag cpf-pos-tag--${kind}">${kind.toUpperCase()}</span>`;
@@ -168,7 +208,6 @@
   }
 
   function layoutOverlay(o) {
-    if (!o.dom) return;
     const entryY = priceY(Number(o.pos.entry));
     if (entryY != null && o.entryRow) {
       o.entryRow.style.top = `${entryY}px`;
@@ -177,7 +216,7 @@
       o.entryRow.style.display = "none";
     }
 
-    const slY = o.slVal != null ? priceY(o.slVal) : null;
+    const slY = priceY(o.slVal);
     if (slY != null && o.slRow) {
       o.slRow.style.top = `${slY}px`;
       o.slRow.style.display = "";
@@ -185,7 +224,7 @@
       o.slRow.style.display = "none";
     }
 
-    const tpY = o.tpVal != null ? priceY(o.tpVal) : null;
+    const tpY = priceY(o.tpVal);
     if (tpY != null && o.tpRow) {
       o.tpRow.style.top = `${tpY}px`;
       o.tpRow.style.display = "";
@@ -211,37 +250,17 @@
     const entry = Number(pos.entry);
     const sl = slPrice(pos);
     const tp = tpPrice(pos);
+    const slSaved = hasSl(pos);
+    const tpSaved = hasTp(pos);
 
-    const entryLine = createLine(
-      entry,
-      COLORS.entry,
-      LC().LineStyle.Solid,
-      COLORS.entryAxis,
-      COLORS.entryText
-    );
-
-    let slLine = null;
-    let tpLine = null;
-    if (sl != null) {
-      slLine = createLine(sl, COLORS.sl, LC().LineStyle.Solid, COLORS.slAxis, COLORS.slText);
-    }
-    if (tp != null) {
-      tpLine = createLine(tp, COLORS.tp, LC().LineStyle.Solid, COLORS.tpAxis, COLORS.tpText);
-    }
+    const entryLine = createLine(entry, COLORS.entry, true, COLORS.entryAxis, COLORS.entryText);
+    const slLine = createLine(sl, COLORS.sl, slSaved, COLORS.slAxis, COLORS.slText);
+    const tpLine = createLine(tp, COLORS.tp, tpSaved, COLORS.tpAxis, COLORS.tpText);
 
     const entryRow = buildEntryPill(pos);
-    overlayRoot.appendChild(entryRow);
-
-    let slRow = null;
-    let tpRow = null;
-    if (sl != null) {
-      slRow = buildTag("sl", pos.id);
-      overlayRoot.appendChild(slRow);
-    }
-    if (tp != null) {
-      tpRow = buildTag("tp", pos.id);
-      overlayRoot.appendChild(tpRow);
-    }
+    const slRow = buildTag("sl", pos.id, slSaved);
+    const tpRow = buildTag("tp", pos.id, tpSaved);
+    overlayRoot.append(entryRow, slRow, tpRow);
 
     const record = {
       pos,
@@ -250,12 +269,15 @@
       tpLine,
       slVal: sl,
       tpVal: tp,
+      slSaved,
+      tpSaved,
       entryRow,
       slRow,
       tpRow,
     };
     overlays.set(pos.id, record);
     layoutOverlay(record);
+    notifyTicket(record);
   }
 
   function upsertPendingOverlay(p) {
@@ -286,7 +308,11 @@
     const pendingOrders = pending.filter((p) => p.symbol === activeSymbol);
     positions.forEach(upsertOverlay);
     pendingOrders.forEach(upsertPendingOverlay);
+    if (!positions.length) {
+      ctx().syncTicketStops?.({ sl: null, tp: null, slSaved: false, tpSaved: false, dragging: false });
+    }
     ensureRangeSub();
+    layoutAll();
   }
 
   function updateLivePnl() {
@@ -307,32 +333,18 @@
   function applyDragPrice(kind, price) {
     const o = overlays.get(drag.id);
     if (!o) return;
-    const sym = o.pos.symbol;
     const exact = Number(price);
     if (kind === "sl") {
       o.slVal = exact;
-      if (o.slLine) {
-        o.slLine.applyOptions({ price: exact });
-      } else {
-        o.slLine = createLine(exact, COLORS.sl, LC().LineStyle.Solid, COLORS.slAxis, COLORS.slText);
-      }
-      if (!o.slRow && overlayRoot) {
-        o.slRow = buildTag("sl", o.pos.id);
-        overlayRoot.appendChild(o.slRow);
-      }
+      o.slLine?.applyOptions({ price: exact, lineStyle: LC().LineStyle.Solid });
+      o.slRow?.classList.remove("is-draft");
     } else {
       o.tpVal = exact;
-      if (o.tpLine) {
-        o.tpLine.applyOptions({ price: exact });
-      } else {
-        o.tpLine = createLine(exact, COLORS.tp, LC().LineStyle.Solid, COLORS.tpAxis, COLORS.tpText);
-      }
-      if (!o.tpRow && overlayRoot) {
-        o.tpRow = buildTag("tp", o.pos.id);
-        overlayRoot.appendChild(o.tpRow);
-      }
+      o.tpLine?.applyOptions({ price: exact, lineStyle: LC().LineStyle.Solid });
+      o.tpRow?.classList.remove("is-draft");
     }
     layoutOverlay(o);
+    notifyTicket(o);
   }
 
   async function persistStops(id, kind) {
@@ -340,11 +352,11 @@
     const accountId = ctx().accountId;
     if (!o || !accountId || !window.AlphaFXApi) return;
 
-    const body = {
-      account_id: accountId,
-      stop_loss: o.slVal,
-      take_profit: o.tpVal,
-    };
+    const sym = o.pos.symbol;
+    const body = { account_id: accountId };
+    if (kind === "sl") body.stop_loss = o.slVal;
+    if (kind === "tp") body.take_profit = o.tpVal;
+
     try {
       await window.AlphaFXApi.request(`/api/v1/trade/positions/${id}/stops`, {
         method: "PATCH",
@@ -353,19 +365,23 @@
       const open = ctx().open || [];
       const row = open.find((p) => p.id === id);
       if (row) {
-        row.sl = o.slVal;
-        row.tp = o.tpVal;
+        if (kind === "sl") row.sl = o.slVal;
+        if (kind === "tp") row.tp = o.tpVal;
       }
-      o.pos.sl = o.slVal;
-      o.pos.tp = o.tpVal;
-      const sym = o.pos.symbol;
+      if (kind === "sl") {
+        o.slSaved = true;
+        o.pos.sl = o.slVal;
+      }
+      if (kind === "tp") {
+        o.tpSaved = true;
+        o.pos.tp = o.tpVal;
+      }
       const msg =
         kind === "sl"
           ? `Stop loss set · ${fmtPrice(sym, o.slVal)}`
-          : kind === "tp"
-            ? `Take profit set · ${fmtPrice(sym, o.tpVal)}`
-            : "Stop levels updated";
+          : `Take profit set · ${fmtPrice(sym, o.tpVal)}`;
       window.AlphaFXToast?.show(msg, "success");
+      notifyTicket(o);
     } catch (e) {
       window.AlphaFXToast?.show(e?.message || "Could not save stops", "error");
       sync();
@@ -374,6 +390,7 @@
 
   function onPointerDown(ev) {
     if (!series || !chart || drag) return;
+
     const tag = ev.target.closest(".cpf-pos-tag");
     if (tag) {
       const row = tag.closest(".cpf-pos-row");
@@ -382,8 +399,9 @@
       if (id && (kind === "sl" || kind === "tp")) {
         ev.preventDefault();
         ev.stopPropagation();
-        drag = { id, kind, pointerId: ev.pointerId };
+        drag = { id, kind, pointerId: ev.pointerId, moved: false };
         document.body.style.cursor = "ns-resize";
+        overlayRoot?.classList.add("is-dragging");
         chart.applyOptions({ handleScroll: false, handleScale: false });
         overlayRoot?.setPointerCapture?.(ev.pointerId);
         return;
@@ -395,8 +413,9 @@
     if (!hit) return;
     ev.preventDefault();
     ev.stopPropagation();
-    drag = { ...hit, pointerId: ev.pointerId };
+    drag = { ...hit, pointerId: ev.pointerId, moved: false };
     document.body.style.cursor = "ns-resize";
+    overlayRoot?.classList.add("is-dragging");
     chart.applyOptions({ handleScroll: false, handleScale: false });
     container?.setPointerCapture?.(ev.pointerId);
   }
@@ -418,14 +437,16 @@
       if (isBuy && price <= entry) return;
       if (!isBuy && price >= entry) return;
     }
+    drag.moved = true;
     applyDragPrice(drag.kind, price);
   }
 
   function onPointerUp(ev) {
     if (!drag) return;
-    const { id, kind, pointerId } = drag;
+    const { id, kind, pointerId, moved } = drag;
     drag = null;
     document.body.style.cursor = "";
+    overlayRoot?.classList.remove("is-dragging");
     chart?.applyOptions({ handleScroll: true, handleScale: true });
     try {
       container?.releasePointerCapture?.(pointerId);
@@ -433,10 +454,8 @@
     } catch {
       /* ignore */
     }
-    persistStops(id, kind);
+    if (moved) persistStops(id, kind);
   }
-
-  let dragHost = null;
 
   function bindDrag() {
     if (dragHost) return;
