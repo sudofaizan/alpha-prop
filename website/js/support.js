@@ -136,11 +136,6 @@
       </div>`;
 
     scrollThreadToBottom();
-
-    if (!closed) {
-      const form = document.getElementById("support-reply-form");
-      form?.addEventListener("submit", handleReply);
-    }
   }
 
   async function fetchThread(ticketId, { silent = false } = {}) {
@@ -148,13 +143,20 @@
     try {
       const data = await window.AlphaFXApi.getSupportTicket(ticketId);
       const prevLen = thread?.messages?.length || 0;
+      const newLen = data.messages?.length || 0;
       thread = data;
-      if (!silent || prevLen !== (data.messages?.length || 0)) {
+      if (!silent) {
         renderThreadView();
-      } else {
+        return;
+      }
+      if (prevLen !== newLen) {
         const box = document.getElementById("support-chat-messages");
-        if (box) box.innerHTML = renderMessages(data.messages);
-        scrollThreadToBottom();
+        if (box) {
+          box.innerHTML = renderMessages(data.messages);
+          scrollThreadToBottom();
+        } else {
+          renderThreadView();
+        }
       }
     } catch (err) {
       if (!silent) {
@@ -299,6 +301,9 @@
     });
 
     els.search?.addEventListener("input", () => renderList(els.search.value));
+    document.addEventListener("submit", (e) => {
+      if (e.target?.id === "support-reply-form") handleReply(e);
+    });
     window.addEventListener("beforeunload", stopPolling);
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) stopPolling();

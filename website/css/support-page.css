@@ -6,6 +6,11 @@
   overflow: hidden;
 }
 
+/* Topbar already shows page title — avoid duplicate "Support" heading */
+body[data-page="support"] .pt-page > .pt-header .pt-header-title {
+  display: none;
+}
+
 .dfx-scope .support-grid > * {
   min-height: 0;
 }
