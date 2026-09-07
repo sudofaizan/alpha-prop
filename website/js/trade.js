@@ -22,11 +22,55 @@
   let accountPollTimer = null;
   let chartLoading = false;
 
+  function tickTimeMs(tick) {
+    let t = Number(tick?.time_ms) || Date.now();
+    if (t < 1e12) t *= 1000;
+    return t;
+  }
+
+  function minuteBucket(ms) {
+    const sec = Math.floor(ms / 1000);
+    return Math.floor(sec / 60) * 60;
+  }
+
   function priceDrift(mid) {
-    if (!barBuffer.length) return false;
+    if (barBuffer.length < 10) return false;
     const lastClose = barBuffer[barBuffer.length - 1].close;
     if (!lastClose || !mid) return false;
-    return Math.abs(mid - lastClose) / mid > 0.015;
+    return Math.abs(mid - lastClose) / mid > 0.05;
+  }
+
+  function mergeLiveTick(tick) {
+    if (!tick || !series) return;
+    const mid = anchorFromTick(tick);
+    const bucket = minuteBucket(tickTimeMs(tick));
+    const last = barBuffer[barBuffer.length - 1];
+    if (last && last.time === bucket) {
+      last.high = Math.max(last.high, mid);
+      last.low = Math.min(last.low, mid);
+      last.close = mid;
+      series.update({ ...last });
+    } else if (!last || last.time < bucket) {
+      const bar = { time: bucket, open: mid, high: mid, low: mid, close: mid };
+      barBuffer.push(bar);
+      series.update(bar);
+    }
+  }
+
+  function updateLiveBar(tick) {
+    const mid = anchorFromTick(tick);
+    const bucket = minuteBucket(tickTimeMs(tick));
+    const last = barBuffer[barBuffer.length - 1];
+    if (!last || last.time < bucket) {
+      const bar = { time: bucket, open: mid, high: mid, low: mid, close: mid };
+      barBuffer.push(bar);
+      series.update(bar);
+    } else if (last.time === bucket) {
+      last.high = Math.max(last.high, mid);
+      last.low = Math.min(last.low, mid);
+      last.close = mid;
+      series.update({ ...last });
+    }
   }
 
   const money = (n) =>
@@ -356,6 +400,7 @@
       return;
     }
 
+    barBuffer = [];
     try {
       const hist = await window.AlphaFXApi.request(
         `/api/v1/market/history?symbol=${encodeURIComponent(symbol)}&timeframe=M1&limit=240&anchor=${encodeURIComponent(anchor)}`
@@ -368,6 +413,8 @@
         close: b.close,
       }));
       series.setData(barBuffer);
+      mergeLiveTick(tick);
+      chart.timeScale().fitContent();
       chart.timeScale().scrollToRealTime();
       if (badge) badge.textContent = `Live | ${symbol}`;
     } catch (e) {
@@ -379,28 +426,27 @@
     updateWatchlistPrice(tick);
     if (!series || tick.symbol !== activeSymbol) return;
 
-    const mid = (tick.bid + tick.ask) / 2;
-    if (barBuffer.length === 0 || priceDrift(mid)) {
+    const mid = anchorFromTick(tick);
+
+    if (barBuffer.length === 0) {
       if (!chartLoading) {
         chartLoading = true;
         await loadChart(activeSymbol);
         chartLoading = false;
       }
-      if (barBuffer.length === 0) return;
+      return;
     }
 
-    const bucket = Math.floor(tick.time_ms / 60000) * 60;
-    const last = barBuffer[barBuffer.length - 1];
-    if (!last || last.time !== bucket) {
-      const bar = { time: bucket, open: mid, high: mid, low: mid, close: mid };
-      barBuffer.push(bar);
-      series.update(bar);
-    } else {
-      last.high = Math.max(last.high, mid);
-      last.low = Math.min(last.low, mid);
-      last.close = mid;
-      series.update({ ...last });
+    if (priceDrift(mid)) {
+      if (!chartLoading) {
+        chartLoading = true;
+        await loadChart(activeSymbol);
+        chartLoading = false;
+      }
+      return;
     }
+
+    updateLiveBar(tick);
   }
 
   async function init() {
