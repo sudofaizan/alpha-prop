@@ -373,7 +373,8 @@
   function updateChartBadge(symbol) {
     const badge = document.getElementById("trade-chart-badge");
     if (!badge || !barBuffer.length) return;
-    const src = chartSource === "mt5" ? "MT5" : chartSource === "synthetic" ? "Demo" : "Live";
+    const src =
+      chartSource === "mt5" ? "MT5" : chartSource === "synthetic" ? "Simulated" : "Live";
     badge.textContent = `${src} | ${symbol} · ${tfLabel(activeTimeframe)} · ${barBuffer.length} bars`;
   }
 
