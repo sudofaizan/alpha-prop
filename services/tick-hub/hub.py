@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AlphaFX Tick Hub — ingest MT5 ticks (TCP) and fan out to WebSocket clients.
+AlphaFX Tick Hub — ingest MT5 ticks + bar history (TCP) and fan out to WebSocket clients.
 
 Usage:
   python hub.py                    # ingest on :9001, ws on :9002, health on :9003
@@ -35,6 +35,15 @@ except ImportError:
 log = logging.getLogger("tick-hub")
 
 DEFAULT_SYMBOLS = ["EURUSD", "XAUUSD", "BTCUSD", "GBPUSD", "USDJPY"]
+MAX_BARS_PER_KEY = 500
+
+
+def normalize_symbol(raw: str) -> str:
+    sym = str(raw or "").upper()
+    for suffix in (".C", ".M", ".I", ".PRO"):
+        if sym.endswith(suffix):
+            return sym[: -len(suffix)]
+    return sym
 
 
 @dataclass
@@ -44,12 +53,7 @@ class TickStore:
     subscribers: set[Any] = field(default_factory=set)
 
     def ingest(self, tick: dict[str, Any]) -> dict[str, Any]:
-        raw_sym = str(tick["symbol"]).upper()
-        sym = raw_sym
-        for suffix in (".C", ".M", ".I", ".PRO"):
-            if sym.endswith(suffix):
-                sym = sym[: -len(suffix)]
-                break
+        sym = normalize_symbol(str(tick["symbol"]))
         tick = {
             "type": "tick",
             "symbol": sym,
@@ -73,7 +77,68 @@ class TickStore:
         return out
 
 
+@dataclass
+class BarStore:
+    """Latest MT5 OHLC snapshots keyed by (symbol, timeframe)."""
+
+    cache: dict[tuple[str, str], list[dict[str, Any]]] = field(default_factory=dict)
+    updated_at: dict[tuple[str, str], float] = field(default_factory=dict)
+
+    def ingest(self, payload: dict[str, Any]) -> dict[str, Any]:
+        sym = normalize_symbol(str(payload.get("symbol", "")))
+        tf = str(payload.get("timeframe", "M1")).upper()
+        incoming = payload.get("bars") or []
+        if not sym or not incoming:
+            return {"symbol": sym, "timeframe": tf, "count": 0}
+
+        cleaned: list[dict[str, Any]] = []
+        for bar in incoming:
+            try:
+                cleaned.append(
+                    {
+                        "time": int(bar["time"]),
+                        "open": float(bar["open"]),
+                        "high": float(bar["high"]),
+                        "low": float(bar["low"]),
+                        "close": float(bar["close"]),
+                    }
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
+
+        if not cleaned:
+            return {"symbol": sym, "timeframe": tf, "count": 0}
+
+        cleaned.sort(key=lambda b: b["time"])
+        # De-duplicate by bar open time (keep last)
+        dedup: dict[int, dict[str, Any]] = {}
+        for bar in cleaned:
+            dedup[bar["time"]] = bar
+        merged = [dedup[t] for t in sorted(dedup)]
+        self.cache[(sym, tf)] = merged[-MAX_BARS_PER_KEY:]
+        self.updated_at[(sym, tf)] = time.time()
+        log.info("Bar cache updated %s %s (%d bars)", sym, tf, len(self.cache[(sym, tf)]))
+        return {"symbol": sym, "timeframe": tf, "count": len(self.cache[(sym, tf)])}
+
+    def get(self, symbol: str, timeframe: str = "M1", limit: int = 300) -> list[dict[str, Any]]:
+        sym = normalize_symbol(symbol)
+        tf = timeframe.upper()
+        bars = self.cache.get((sym, tf), [])
+        if limit <= 0:
+            return list(bars)
+        return bars[-limit:]
+
+    def age_seconds(self, symbol: str, timeframe: str = "M1") -> float | None:
+        sym = normalize_symbol(symbol)
+        tf = timeframe.upper()
+        ts = self.updated_at.get((sym, tf))
+        if ts is None:
+            return None
+        return time.time() - ts
+
+
 store = TickStore()
+bar_store = BarStore()
 # Symbols recently updated by MT5 — mock must not overwrite these
 _mt5_last: dict[str, float] = {}
 
@@ -91,13 +156,25 @@ async def broadcast(tick: dict[str, Any]) -> None:
     store.subscribers -= dead
 
 
+async def handle_tcp_payload(payload: dict[str, Any]) -> None:
+    msg_type = payload.get("type")
+    if msg_type == "heartbeat":
+        return
+    if msg_type == "bars":
+        bar_store.ingest(payload)
+        return
+    if msg_type == "tick" or ("symbol" in payload and "bid" in payload and "ask" in payload):
+        tick = store.ingest(payload)
+        await broadcast(tick)
+
+
 async def handle_tcp_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
     peer = writer.get_extra_info("peername")
     log.info("TCP ingest connected: %s", peer)
     buf = ""
     try:
         while True:
-            chunk = await reader.read(4096)
+            chunk = await reader.read(65536)
             if not chunk:
                 break
             buf += chunk.decode("utf-8", errors="replace")
@@ -111,12 +188,7 @@ async def handle_tcp_client(reader: asyncio.StreamReader, writer: asyncio.Stream
                 except json.JSONDecodeError:
                     log.warning("Invalid JSON from %s: %s", peer, line[:120])
                     continue
-                if payload.get("type") == "heartbeat":
-                    continue
-                if "symbol" not in payload or "bid" not in payload or "ask" not in payload:
-                    continue
-                tick = store.ingest(payload)
-                await broadcast(tick)
+                await handle_tcp_payload(payload)
     except asyncio.CancelledError:
         raise
     except Exception as exc:
@@ -171,7 +243,6 @@ async def mock_tick_loop(symbols: list[str]) -> None:
     while True:
         now = time.time()
         for sym in symbols:
-            # Never mix mock prices with live MT5 for the same symbol
             if now - _mt5_last.get(sym, 0) < 120:
                 continue
             drift = random.uniform(-0.00008, 0.00008)
@@ -191,6 +262,7 @@ async def mock_tick_loop(symbols: list[str]) -> None:
 
 
 async def health_handler(_request: web.Request) -> web.Response:
+    bar_keys = [f"{sym}:{tf}" for (sym, tf) in bar_store.cache]
     return web.json_response(
         {
             "status": "ok",
@@ -198,6 +270,35 @@ async def health_handler(_request: web.Request) -> web.Response:
             "subscribers": len(store.subscribers),
             "symbols_cached": len(store.last),
             "last_symbols": sorted(store.last.keys()),
+            "bar_symbols": bar_keys,
+            "bar_count": sum(len(v) for v in bar_store.cache.values()),
+        }
+    )
+
+
+async def bars_handler(request: web.Request) -> web.Response:
+    symbol = request.rel_url.query.get("symbol", "").strip()
+    timeframe = request.rel_url.query.get("timeframe", "M1").strip().upper() or "M1"
+    try:
+        limit = int(request.rel_url.query.get("limit", "300"))
+    except ValueError:
+        limit = 300
+    limit = max(1, min(limit, MAX_BARS_PER_KEY))
+
+    if not symbol:
+        return web.json_response({"detail": "symbol required"}, status=400)
+
+    sym = normalize_symbol(symbol)
+    bars = bar_store.get(sym, timeframe, limit)
+    age = bar_store.age_seconds(sym, timeframe)
+    return web.json_response(
+        {
+            "symbol": sym,
+            "timeframe": timeframe,
+            "source": "mt5" if bars else "none",
+            "bars": bars,
+            "count": len(bars),
+            "age_seconds": round(age, 1) if age is not None else None,
         }
     )
 
@@ -227,6 +328,7 @@ async def main() -> None:
     if web is not None:
         app = web.Application()
         app.router.add_get("/health", health_handler)
+        app.router.add_get("/bars", bars_handler)
         health_runner = web.AppRunner(app)
         await health_runner.setup()
         await web.TCPSite(health_runner, "0.0.0.0", args.health_port).start()
@@ -236,7 +338,7 @@ async def main() -> None:
         mock_task = asyncio.create_task(mock_tick_loop(symbols))
 
     log.info(
-        "Tick hub listening tcp=%s:%d ws=%s:%d health=:%d",
+        "Tick hub listening tcp=%s:%d ws=%s:%d health/bars=:%d",
         args.tcp_host, args.tcp_port, args.ws_host, args.ws_port, args.health_port,
     )
 

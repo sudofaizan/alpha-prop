@@ -146,6 +146,7 @@ pip install -q -r requirements.txt
 # Tick hub: mock off by default when MT5 EA feeds TCP :9001
 TICK_HUB_MOCK="${ALPHAFX_TICK_HUB_MOCK:-0}"
 TICK_HUB_WS="${ALPHAFX_TICK_HUB_WS:-ws://127.0.0.1:9002}"
+TICK_HUB_HTTP="${ALPHAFX_TICK_HUB_HTTP:-http://127.0.0.1:9003}"
 
 log "Writing backend/.env…"
 cat > .env <<EOF
@@ -158,6 +159,7 @@ ALPHAFX_ADMIN_PASSWORD=${ADMIN_PASSWORD}
 ALPHAFX_ADMIN_NAME=AlphaFX Admin
 ALPHAFX_TICK_MOCK=false
 ALPHAFX_TICK_HUB_WS=${TICK_HUB_WS}
+ALPHAFX_TICK_HUB_HTTP=${TICK_HUB_HTTP}
 EOF
 chmod 600 .env
 

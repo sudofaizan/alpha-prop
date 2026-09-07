@@ -463,7 +463,8 @@
       series.setData(barBuffer);
       mergeLiveTick(tick);
       chart.timeScale().fitContent();
-      if (badge) badge.textContent = `Live | ${symbol} · ${barBuffer.length} bars`;
+      const src = hist.source === "mt5" ? "MT5" : hist.source === "synthetic" ? "Demo" : "Live";
+      if (badge) badge.textContent = `${src} | ${symbol} · ${barBuffer.length} bars`;
     } catch (e) {
       console.error("loadChart failed:", e);
     } finally {

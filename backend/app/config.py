@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     admin_password: str = "AdminFX2026!"
     admin_name: str = "AlphaFX Admin"
     tick_hub_ws: str = ""
+    tick_hub_http: str = "http://127.0.0.1:9003"
     tick_mock: bool = True
 
     @property
