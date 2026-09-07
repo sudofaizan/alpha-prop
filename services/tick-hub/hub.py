@@ -44,15 +44,21 @@ class TickStore:
     subscribers: set[Any] = field(default_factory=set)
 
     def ingest(self, tick: dict[str, Any]) -> dict[str, Any]:
+        raw_sym = str(tick["symbol"]).upper()
+        sym = raw_sym
+        for suffix in (".C", ".M", ".I", ".PRO"):
+            if sym.endswith(suffix):
+                sym = sym[: -len(suffix)]
+                break
         tick = {
             "type": "tick",
-            "symbol": str(tick["symbol"]).upper(),
+            "symbol": sym,
             "bid": float(tick["bid"]),
             "ask": float(tick["ask"]),
             "time_ms": int(tick.get("time_ms") or time.time() * 1000),
             "source": tick.get("source", "mt5"),
         }
-        self.last[tick["symbol"]] = tick
+        self.last[sym] = tick
         self.ring.append(tick)
         return tick
 

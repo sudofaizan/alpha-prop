@@ -6,6 +6,7 @@ import time
 from typing import Any
 
 from app.config import settings
+from app.services.symbols import normalize_symbol
 
 log = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ class TickUpstream:
             self._task = None
 
     def subscribe(self, ws: Any, symbols: list[str]) -> list[dict[str, Any]]:
-        syms = {s.upper() for s in symbols if s}
+        syms = {normalize_symbol(s) for s in symbols if s}
         self._clients[ws] = syms
         return [self._last[s] for s in syms if s in self._last]
 
@@ -67,7 +68,8 @@ class TickUpstream:
                     continue
                 if tick.get("type") != "tick":
                     continue
-                sym = str(tick.get("symbol", "")).upper()
+                sym = normalize_symbol(str(tick.get("symbol", "")))
+                tick = {**tick, "symbol": sym}
                 self._last[sym] = tick
                 await self._fanout(tick)
 

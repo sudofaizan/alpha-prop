@@ -7,8 +7,18 @@
   function wsUrl() {
     const token = window.AlphaFXApi?.getToken?.();
     if (!token) return null;
-    const base = API.replace(/^http/, "ws");
-    return `${base}/ws/quotes?token=${encodeURIComponent(token)}`;
+    const base = API || window.location.origin;
+    const url = new URL("/ws/quotes", base);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    url.searchParams.set("token", token);
+    return url.toString();
+  }
+
+  /** Map broker symbols (EURUSD.C) to portal symbols (EURUSD). */
+  function normalizeSymbol(symbol) {
+    return String(symbol || "")
+      .toUpperCase()
+      .replace(/\.(C|M|I|PRO)$/i, "");
   }
 
   class QuotesSocket {
@@ -99,11 +109,12 @@
 
     _emit(tick) {
       if (!tick || !tick.symbol) return;
-      const sym = String(tick.symbol).toUpperCase();
-      this._last[sym] = tick;
+      const sym = normalizeSymbol(tick.symbol);
+      const normalized = { ...tick, symbol: sym };
+      this._last[sym] = normalized;
       this.handlers.forEach((fn) => {
         try {
-          fn(tick);
+          fn(normalized);
         } catch (e) {
           console.error(e);
         }
