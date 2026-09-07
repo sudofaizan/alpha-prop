@@ -81,6 +81,11 @@
   let chartSource = "none";
   let tradingEnabled = false;
   let orderBusy = false;
+  const closingTradeIds = new Set();
+
+  function toast(message, type = "info") {
+    window.AlphaFXToast?.show(message, type);
+  }
 
   function chartBodyEl(container) {
     return container?.closest(".trade-chart-body") || container?.parentElement;
@@ -505,6 +510,62 @@
     };
   }
 
+  function detectStopHit(pos, tick) {
+    const sl = pos.sl != null && pos.sl !== "" ? Number(pos.sl) : null;
+    const tp = pos.tp != null && pos.tp !== "" ? Number(pos.tp) : null;
+    if (sl == null && tp == null) return null;
+    const side = String(pos.side || "").toUpperCase();
+    const bid = Number(tick.bid);
+    const ask = Number(tick.ask);
+    if (side === "BUY") {
+      if (sl != null && bid <= sl) return "sl";
+      if (tp != null && bid >= tp) return "tp";
+    } else {
+      if (sl != null && ask >= sl) return "sl";
+      if (tp != null && ask <= tp) return "tp";
+    }
+    return null;
+  }
+
+  async function autoCloseOnStopHit(tradeId, reason, symbol) {
+    if (!accountId || closingTradeIds.has(tradeId)) return;
+    closingTradeIds.add(tradeId);
+    orderBusy = true;
+    setTradingControls(tradingEnabled);
+    try {
+      const res = await window.AlphaFXApi.request(`/api/v1/trade/positions/${tradeId}/close`, {
+        method: "POST",
+        body: JSON.stringify({ account_id: accountId, reason }),
+      });
+      const label = reason === "tp" ? "Take profit" : "Stop loss";
+      toast(`${symbol} · ${label} hit · ${res.message || "Position closed"}`, "success");
+      await loadTradeSnapshot();
+    } catch (e) {
+      toast(e?.message || "Stop close failed", "error");
+    } finally {
+      closingTradeIds.delete(tradeId);
+      orderBusy = false;
+      setTradingControls(tradingEnabled);
+    }
+  }
+
+  function checkStopHits(tick) {
+    if (!tick || !accountId || orderBusy) return;
+    for (const pos of tradeSnapshot.open || []) {
+      if (pos.symbol !== tick.symbol || closingTradeIds.has(pos.id)) continue;
+      const hit = detectStopHit(pos, tick);
+      if (hit) autoCloseOnStopHit(pos.id, hit, pos.symbol);
+    }
+  }
+
+  function notifyStopHits(hits) {
+    if (!hits?.length) return;
+    for (const h of hits) {
+      const label = h.reason === "tp" ? "Take profit" : "Stop loss";
+      toast(`${h.symbol} · ${label} hit @ ${h.exit} · P/L ${money(h.pnl)}`, "success");
+    }
+  }
+
   function refreshLiveMetrics() {
     if (!accountData || !(tradeSnapshot.open || []).length) return;
     if (liveMetricsRaf) return;
@@ -544,7 +605,7 @@
     if (!tradingEnabled || orderBusy || !accountId) return;
     const volume = Number(document.getElementById("trade-volume")?.value || 0);
     if (!volume || volume < 0.01) {
-      alert("Enter a valid volume (min 0.01 lots).");
+      toast("Enter a valid volume (min 0.01 lots).", "error");
       return;
     }
     orderBusy = true;
@@ -561,9 +622,10 @@
           take_profit: parseOptionalPrice(document.getElementById("trade-tp")?.value),
         }),
       });
+      toast("Order filled", "success");
       await loadTradeSnapshot();
     } catch (e) {
-      alert(e?.message || "Order failed");
+      toast(e?.message || "Order failed", "error");
     } finally {
       orderBusy = false;
       setTradingControls(tradingEnabled);
@@ -579,9 +641,10 @@
         method: "POST",
         body: JSON.stringify({ account_id: accountId }),
       });
+      toast("Position closed", "success");
       await loadTradeSnapshot();
     } catch (e) {
-      alert(e?.message || "Close failed");
+      toast(e?.message || "Close failed", "error");
     } finally {
       orderBusy = false;
       setTradingControls(tradingEnabled);
@@ -624,6 +687,7 @@
         accountId = tradeSnapshot.account.id;
         mapAccountMetrics(tradeSnapshot.account);
       }
+      notifyStopHits(tradeSnapshot.stop_hits);
       setTradingControls(tradeSnapshot.trading_enabled && tradeSnapshot.account);
       renderAccountSelect(tradeSnapshot.accounts || [], accountId);
       syncPositionQuoteSubscriptions();
@@ -849,6 +913,7 @@
 
   async function onTick(tick) {
     updateWatchlistPrice(tick);
+    checkStopHits(tick);
     refreshLiveMetrics();
 
     if (tick.symbol !== activeSymbol) return;

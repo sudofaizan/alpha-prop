@@ -12,6 +12,7 @@ class PlaceOrderRequest(BaseModel):
 
 class ClosePositionRequest(BaseModel):
     account_id: int
+    reason: str = "manual"
 
 
 class UpdateStopsRequest(BaseModel):

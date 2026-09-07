@@ -139,7 +139,77 @@ def trade_row(trade: SimTrade, *, live_pnl: float | None = None) -> dict:
     }
 
 
+def _detect_stop_hit(trade: SimTrade, bid: float, ask: float) -> str | None:
+    sl = trade.stop_loss
+    tp = trade.take_profit
+    side = trade.side.upper()
+    if side == "BUY":
+        if sl is not None and bid <= float(sl):
+            return "sl"
+        if tp is not None and bid >= float(tp):
+            return "tp"
+    else:
+        if sl is not None and ask >= float(sl):
+            return "sl"
+        if tp is not None and ask <= float(tp):
+            return "tp"
+    return None
+
+
+def process_stop_hits(db: Session, account_id: int) -> list[dict]:
+    """Close open trades whose SL or TP has been touched by live price."""
+    account = db.query(ChallengeAccount).filter(ChallengeAccount.id == account_id).one_or_none()
+    if not account:
+        return []
+
+    closed_events: list[dict] = []
+    open_trades = (
+        db.query(SimTrade)
+        .filter(SimTrade.account_id == account_id, SimTrade.status == "open")
+        .all()
+    )
+    for trade in open_trades:
+        if trade.stop_loss is None and trade.take_profit is None:
+            continue
+        try:
+            bid, ask = _quote_prices(trade.symbol)
+        except HTTPException:
+            continue
+        hit = _detect_stop_hit(trade, bid, ask)
+        if not hit:
+            continue
+
+        exit_px = float(trade.stop_loss if hit == "sl" else trade.take_profit)
+        pnl = calc_pnl(trade.symbol, trade.side, trade.volume, trade.entry_price, exit_px)
+        trade.exit_price = exit_px
+        trade.pnl = pnl
+        trade.status = "closed"
+        trade.close_reason = hit
+        trade.closed_at = _utcnow()
+        account.balance = round(account.balance + pnl, 2)
+        db.add(trade)
+        db.add(account)
+        closed_events.append(
+            {
+                "id": trade.id,
+                "symbol": trade.symbol,
+                "reason": hit,
+                "pnl": pnl,
+                "exit": _round_price(trade.symbol, exit_px),
+            }
+        )
+
+    if closed_events:
+        db.commit()
+        refresh_account_metrics(db, account)
+        _update_trade_stats(db, account)
+        db.commit()
+    return closed_events
+
+
 def snapshot_for_account(db: Session, account: ChallengeAccount) -> dict:
+    hits = process_stop_hits(db, account.id)
+    db.refresh(account)
     account = refresh_account_metrics(db, account)
     open_trades = (
         db.query(SimTrade)
@@ -172,6 +242,7 @@ def snapshot_for_account(db: Session, account: ChallengeAccount) -> dict:
         "open": open_rows,
         "pending": [],
         "closed": closed_rows,
+        "stop_hits": hits,
         "counts": {
             "open": len(open_rows),
             "pending": 0,
@@ -247,6 +318,7 @@ def close_position(
     account_id: int,
     trade_id: int,
     reason: str = "manual",
+    exit_price: float | None = None,
 ) -> SimTrade:
     account = _require_account(db, user_id, account_id)
     trade = (
@@ -257,7 +329,14 @@ def close_position(
     if not trade:
         raise HTTPException(status_code=404, detail="Open position not found")
 
-    exit_px = _exit_price(trade.symbol, trade.side)
+    if exit_price is not None:
+        exit_px = float(exit_price)
+    elif reason == "sl" and trade.stop_loss is not None:
+        exit_px = float(trade.stop_loss)
+    elif reason == "tp" and trade.take_profit is not None:
+        exit_px = float(trade.take_profit)
+    else:
+        exit_px = _exit_price(trade.symbol, trade.side)
     pnl = calc_pnl(trade.symbol, trade.side, trade.volume, trade.entry_price, exit_px)
 
     trade.exit_price = exit_px

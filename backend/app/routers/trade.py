@@ -74,6 +74,7 @@ def trade_snapshot(
         "closed": panels["closed"],
         "counts": panels["counts"],
         "metrics": panels.get("metrics"),
+        "stop_hits": panels.get("stop_hits") or [],
     }
 
 
@@ -105,7 +106,7 @@ def close_position(
     db: Session = Depends(get_db),
 ):
     """Close an open simulated position."""
-    trade = sim_engine.close_position(db, user.id, body.account_id, trade_id)
+    trade = sim_engine.close_position(db, user.id, body.account_id, trade_id, body.reason)
     return OrderResponse(trade_id=trade.id, message=f"Closed position #{trade.id} · P/L ${trade.pnl:.2f}")
 
 

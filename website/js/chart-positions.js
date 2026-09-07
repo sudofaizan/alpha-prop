@@ -246,7 +246,7 @@
     }
   }
 
-  async function persistStops(id) {
+  async function persistStops(id, kind) {
     const o = overlays.get(id);
     const accountId = ctx().accountId;
     if (!o || !accountId || !window.AlphaFXApi) return;
@@ -269,8 +269,16 @@
       }
       o.slSaved = true;
       o.tpSaved = true;
+      const sym = o.pos.symbol;
+      const msg =
+        kind === "sl"
+          ? `Stop loss set · ${fmtPrice(sym, o.slVal)}`
+          : kind === "tp"
+            ? `Take profit set · ${fmtPrice(sym, o.tpVal)}`
+            : "Stop levels updated";
+      window.AlphaFXToast?.show(msg, "success");
     } catch (e) {
-      console.error("Failed to save stops:", e);
+      window.AlphaFXToast?.show(e?.message || "Could not save stops", "error");
     }
   }
 
@@ -309,7 +317,7 @@
 
   function onMouseUp(ev) {
     if (!drag) return;
-    const { id, pointerId } = drag;
+    const { id, kind, pointerId } = drag;
     drag = null;
     document.body.style.cursor = "";
     chart?.applyOptions({ handleScroll: true, handleScale: true });
@@ -318,7 +326,7 @@
     } catch {
       /* ignore */
     }
-    persistStops(id);
+    persistStops(id, kind);
   }
 
   function bindDrag() {
