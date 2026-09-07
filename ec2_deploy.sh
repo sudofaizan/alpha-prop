@@ -143,8 +143,8 @@ source .venv/bin/activate
 pip install -q --upgrade pip
 pip install -q -r requirements.txt
 
-# Tick hub: same EC2 by default (mock until Windows MT5 EA is wired)
-TICK_HUB_MOCK="${ALPHAFX_TICK_HUB_MOCK:-1}"
+# Tick hub: mock off by default when MT5 EA feeds TCP :9001
+TICK_HUB_MOCK="${ALPHAFX_TICK_HUB_MOCK:-0}"
 TICK_HUB_WS="${ALPHAFX_TICK_HUB_WS:-ws://127.0.0.1:9002}"
 
 log "Writing backend/.env…"

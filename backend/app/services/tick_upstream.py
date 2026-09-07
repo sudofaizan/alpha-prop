@@ -69,7 +69,11 @@ class TickUpstream:
                 if tick.get("type") != "tick":
                     continue
                 sym = normalize_symbol(str(tick.get("symbol", "")))
-                tick = {**tick, "symbol": sym}
+                source = tick.get("source", "mt5")
+                prev = self._last.get(sym)
+                if prev and prev.get("source") == "mt5" and source == "mock":
+                    continue
+                tick = {**tick, "symbol": sym, "source": source}
                 self._last[sym] = tick
                 await self._fanout(tick)
 

@@ -14,7 +14,6 @@
     return url.toString();
   }
 
-  /** Map broker symbols (EURUSD.C) to portal symbols (EURUSD). */
   function normalizeSymbol(symbol) {
     return String(symbol || "")
       .toUpperCase()
@@ -26,8 +25,11 @@
       this.ws = null;
       this.symbols = new Set();
       this.handlers = new Set();
-      this.reconnectMs = 1500;
+      this.reconnectMs = 2000;
       this._shouldRun = false;
+      this._connecting = false;
+      this._live = false;
+      this._statusTimer = null;
       this._last = {};
     }
 
@@ -37,46 +39,85 @@
     }
 
     getLast(symbol) {
-      return this._last[String(symbol || "").toUpperCase()] || null;
+      return this._last[normalizeSymbol(symbol)] || null;
     }
 
     connect(symbols) {
       this._shouldRun = true;
-      (symbols || []).forEach((s) => this.symbols.add(String(s).toUpperCase()));
-      this._open();
+      (symbols || []).forEach((s) => this.symbols.add(normalizeSymbol(s)));
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        this._open();
+      } else {
+        this._sendSubscribe();
+      }
     }
 
     subscribe(symbols) {
-      (symbols || []).forEach((s) => this.symbols.add(String(s).toUpperCase()));
+      (symbols || []).forEach((s) => this.symbols.add(normalizeSymbol(s)));
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ action: "subscribe", symbols: [...this.symbols] }));
-      } else {
+        this._sendSubscribe();
+      } else if (!this._connecting) {
         this._open();
       }
     }
 
     disconnect() {
       this._shouldRun = false;
+      this._connecting = false;
       if (this.ws) {
-        this.ws.close();
+        const old = this.ws;
+        old.onclose = null;
+        old.onerror = null;
+        old.close();
         this.ws = null;
+      }
+      this._setLive(false, true);
+    }
+
+    _sendSubscribe() {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+      this.ws.send(JSON.stringify({ action: "subscribe", symbols: [...this.symbols] }));
+    }
+
+    _setLive(live, immediate) {
+      const apply = () => {
+        if (this._live === live) return;
+        this._live = live;
+        window.dispatchEvent(new CustomEvent("alphafx:quotes:status", { detail: { live } }));
+      };
+      clearTimeout(this._statusTimer);
+      if (immediate || live) {
+        apply();
+      } else {
+        // Avoid flicker: show "Reconnecting" only after 2s offline
+        this._statusTimer = setTimeout(apply, 2000);
       }
     }
 
     _open() {
       const url = wsUrl();
-      if (!url || !this._shouldRun) return;
+      if (!url || !this._shouldRun || this._connecting) return;
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
+
+      this._connecting = true;
 
       if (this.ws) {
-        this.ws.close();
+        const old = this.ws;
+        old.onclose = null;
+        old.onerror = null;
+        old.close();
+        this.ws = null;
       }
 
       const ws = new WebSocket(url);
       this.ws = ws;
 
       ws.onopen = () => {
-        ws.send(JSON.stringify({ action: "subscribe", symbols: [...this.symbols] }));
-        window.dispatchEvent(new CustomEvent("alphafx:quotes:status", { detail: { live: true } }));
+        if (this.ws !== ws) return;
+        this._connecting = false;
+        this.reconnectMs = 2000;
+        this._sendSubscribe();
+        this._setLive(true, true);
       };
 
       ws.onmessage = (ev) => {
@@ -96,20 +137,27 @@
       };
 
       ws.onclose = () => {
-        window.dispatchEvent(new CustomEvent("alphafx:quotes:status", { detail: { live: false } }));
-        if (this._shouldRun) {
-          setTimeout(() => this._open(), this.reconnectMs);
-        }
+        if (this.ws !== ws) return;
+        this.ws = null;
+        this._connecting = false;
+        if (!this._shouldRun) return;
+        this._setLive(false, false);
+        setTimeout(() => this._open(), this.reconnectMs);
+        this.reconnectMs = Math.min(Math.round(this.reconnectMs * 1.5), 15000);
       };
 
       ws.onerror = () => {
-        ws.close();
+        if (this.ws === ws) ws.close();
       };
     }
 
     _emit(tick) {
       if (!tick || !tick.symbol) return;
       const sym = normalizeSymbol(tick.symbol);
+      // Prefer MT5 over mock if both arrive for the same symbol
+      const prev = this._last[sym];
+      if (prev && prev.source === "mt5" && tick.source === "mock") return;
+
       const normalized = { ...tick, symbol: sym };
       this._last[sym] = normalized;
       this.handlers.forEach((fn) => {

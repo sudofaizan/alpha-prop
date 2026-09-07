@@ -58,6 +58,8 @@ class TickStore:
             "time_ms": int(tick.get("time_ms") or time.time() * 1000),
             "source": tick.get("source", "mt5"),
         }
+        if tick["source"] == "mt5":
+            _mt5_last[sym] = time.time()
         self.last[sym] = tick
         self.ring.append(tick)
         return tick
@@ -72,6 +74,8 @@ class TickStore:
 
 
 store = TickStore()
+# Symbols recently updated by MT5 — mock must not overwrite these
+_mt5_last: dict[str, float] = {}
 
 
 async def broadcast(tick: dict[str, Any]) -> None:
@@ -165,7 +169,11 @@ async def mock_tick_loop(symbols: list[str]) -> None:
     }
     log.info("Mock tick generator running for: %s", ", ".join(symbols))
     while True:
+        now = time.time()
         for sym in symbols:
+            # Never mix mock prices with live MT5 for the same symbol
+            if now - _mt5_last.get(sym, 0) < 120:
+                continue
             drift = random.uniform(-0.00008, 0.00008)
             if sym == "XAUUSD":
                 drift = random.uniform(-0.5, 0.5)
