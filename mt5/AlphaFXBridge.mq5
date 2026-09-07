@@ -1,18 +1,24 @@
 //+------------------------------------------------------------------+
-//| AlphaFXBridge.mq5 — ticks + M1 bar history to AlphaFX Tick Hub   |
+//| AlphaFXBridge.mq5 — ticks + multi-TF OHLC history to Tick Hub    |
 //| Attach ONE instance to any chart (all symbols via inputs).       |
 //+------------------------------------------------------------------+
 #property copyright "AlphaFX"
-#property version   "1.10"
+#property version   "1.20"
 #property strict
 
 input string InpHubHost         = "127.0.0.1";
 input int    InpHubPort         = 9001;
 input string InpSymbols         = "EURUSD,XAUUSD,BTCUSD,GBPUSD,USDJPY";
-input int    InpTimerMs         = 100;    // tick poll interval (ms)
-input int    InpBarCount        = 300;    // M1 bars per symbol
-input int    InpBarIntervalSec  = 60;     // bar snapshot interval (sec)
+input int    InpTimerMs         = 100;
+input int    InpBarCount        = 300;
+input int    InpBarIntervalSec  = 60;
 input int    InpHeartbeatSec    = 5;
+
+string   TF_NAMES[]   = {"M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN1"};
+ENUM_TIMEFRAMES TF_PERIODS[] = {
+   PERIOD_M1, PERIOD_M5, PERIOD_M15, PERIOD_M30,
+   PERIOD_H1, PERIOD_H4, PERIOD_D1, PERIOD_W1, PERIOD_MN1
+};
 
 int      socketHandle = INVALID_HANDLE;
 string   symbols[];
@@ -118,28 +124,32 @@ void PublishTick(string sym, int idx)
 //+------------------------------------------------------------------+
 void PublishAllBars()
   {
+   int tfCount = ArraySize(TF_NAMES);
    for(int i = 0; i < ArraySize(symbols); i++)
-      PublishBars(NormalizeSym(symbols[i]));
+     {
+      string sym = NormalizeSym(symbols[i]);
+      for(int t = 0; t < tfCount; t++)
+         PublishBars(sym, TF_NAMES[t], TF_PERIODS[t]);
+     }
    lastBarPublish = TimeCurrent();
   }
 
 //+------------------------------------------------------------------+
-void PublishBars(string sym)
+void PublishBars(string sym, string tfName, ENUM_TIMEFRAMES period)
   {
-   string s = NormalizeSym(sym);
-   if(s == "")
+   if(sym == "")
       return;
 
    MqlRates rates[];
    ArraySetAsSeries(rates, true);
-   int n = CopyRates(s, PERIOD_M1, 0, InpBarCount, rates);
+   int n = CopyRates(sym, period, 0, InpBarCount, rates);
    if(n <= 0)
      {
-      Print("AlphaFXBridge: CopyRates failed for ", s, " err=", GetLastError());
+      Print("AlphaFXBridge: CopyRates failed ", sym, " ", tfName, " err=", GetLastError());
       return;
      }
 
-   string json = "{\"type\":\"bars\",\"symbol\":\"" + s + "\",\"timeframe\":\"M1\",\"source\":\"mt5\",\"bars\":[";
+   string json = "{\"type\":\"bars\",\"symbol\":\"" + sym + "\",\"timeframe\":\"" + tfName + "\",\"source\":\"mt5\",\"bars\":[";
    bool first = true;
    for(int i = n - 1; i >= 0; i--)
      {
@@ -157,7 +167,6 @@ void PublishBars(string sym)
      }
    json += "]}\n";
    SendLine(json);
-   Print("AlphaFXBridge: sent ", n, " M1 bars for ", s);
   }
 
 //+------------------------------------------------------------------+

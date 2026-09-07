@@ -4,6 +4,7 @@ import time
 from fastapi import APIRouter, Query
 
 from app.data.symbols import SYMBOL_GROUPS, resolve_symbol
+from app.data.timeframes import DEFAULT_TIMEFRAME, list_timeframes, normalize_timeframe, step_seconds
 from app.services.bar_cache import fetch_bars
 
 router = APIRouter(prefix="/market", tags=["market"])
@@ -22,6 +23,11 @@ def list_symbols():
     return {"groups": SYMBOL_GROUPS}
 
 
+@router.get("/timeframes")
+def market_timeframes():
+    return {"timeframes": list_timeframes(), "default": DEFAULT_TIMEFRAME}
+
+
 def _round_bars(bars: list[dict], digits: int) -> list[dict]:
     out = []
     for b in bars:
@@ -37,10 +43,27 @@ def _round_bars(bars: list[dict], digits: int) -> list[dict]:
     return out
 
 
-def _synthetic_bars(sym: str, digits: int, limit: int, anchor: float) -> list[dict]:
+def _current_bucket(now: int, step: int, timeframe: str) -> int:
+    if timeframe == "MN1":
+        import datetime as dt
+
+        d = dt.datetime.utcfromtimestamp(now)
+        month_start = dt.datetime(d.year, d.month, 1, tzinfo=dt.timezone.utc)
+        return int(month_start.timestamp())
+    if timeframe == "W1":
+        import datetime as dt
+
+        d = dt.datetime.utcfromtimestamp(now)
+        weekday = d.weekday()
+        week_start = dt.datetime(d.year, d.month, d.day, tzinfo=dt.timezone.utc) - dt.timedelta(days=weekday)
+        return int(week_start.timestamp())
+    return (now // step) * step
+
+
+def _synthetic_bars(sym: str, digits: int, limit: int, anchor: float, timeframe: str) -> list[dict]:
     """Fallback random-walk bars when MT5 history is not available."""
     now = int(time.time())
-    step = 60
+    step = step_seconds(timeframe)
     vol = _VOL.get(sym, 0.001)
     end_price = float(anchor)
 
@@ -71,7 +94,7 @@ def _synthetic_bars(sym: str, digits: int, limit: int, anchor: float) -> list[di
         bars[-1]["high"] = round(max(bars[-1]["high"], end_price), digits)
         bars[-1]["low"] = round(min(bars[-1]["low"], end_price), digits)
 
-    current_bucket = (now // step) * step
+    current_bucket = _current_bucket(now, step, timeframe)
     spread = vol * 0.2
     p = round(end_price, digits)
     hi = round(end_price + spread, digits)
@@ -90,7 +113,7 @@ def _synthetic_bars(sym: str, digits: int, limit: int, anchor: float) -> list[di
 @router.get("/history")
 def market_history(
     symbol: str,
-    timeframe: str = "M1",
+    timeframe: str = DEFAULT_TIMEFRAME,
     limit: int = Query(default=300, le=500),
     anchor: float | None = Query(default=None, description="Live mid — used for synthetic fallback only"),
 ):
@@ -99,12 +122,12 @@ def market_history(
     Falls back to synthetic bars anchored to live price when MT5 cache is empty.
     """
     meta = resolve_symbol(symbol)
+    tf = normalize_timeframe(timeframe) or DEFAULT_TIMEFRAME
     if not meta:
-        return {"symbol": symbol.upper(), "timeframe": timeframe, "source": "none", "bars": []}
+        return {"symbol": symbol.upper(), "timeframe": tf, "source": "none", "bars": []}
 
     sym = meta["symbol"]
     digits = meta["digits"]
-    tf = timeframe.upper()
 
     cached = fetch_bars(sym, tf, limit)
     if cached:
@@ -115,5 +138,5 @@ def market_history(
     if anchor is None or anchor <= 0:
         return {"symbol": sym, "timeframe": tf, "source": "none", "bars": []}
 
-    bars = _synthetic_bars(sym, digits, limit, float(anchor))
+    bars = _synthetic_bars(sym, digits, limit, float(anchor), tf)
     return {"symbol": sym, "timeframe": tf, "source": "synthetic", "anchor": float(anchor), "bars": bars}

@@ -3,10 +3,24 @@
  */
 (function () {
   const STORAGE_TABS = "alphafx_trade_tabs";
+  const STORAGE_TF = "alphafx_trade_tf";
   const DEFAULT_SYMBOL = "BTCUSD";
   const DEFAULT_TABS = ["XAUUSD", "BTCUSD"];
+  const DEFAULT_TIMEFRAME = "M1";
+  const TIMEFRAMES = [
+    { id: "M1", label: "1m", step: 60 },
+    { id: "M5", label: "5m", step: 300 },
+    { id: "M15", label: "15m", step: 900 },
+    { id: "M30", label: "30m", step: 1800 },
+    { id: "H1", label: "1H", step: 3600 },
+    { id: "H4", label: "4H", step: 14400 },
+    { id: "D1", label: "1D", step: 86400 },
+    { id: "W1", label: "1W", step: 604800 },
+    { id: "MN1", label: "1M", step: 2592000 },
+  ];
 
   let activeSymbol = DEFAULT_SYMBOL;
+  let activeTimeframe = DEFAULT_TIMEFRAME;
   let openTabs = [...DEFAULT_TABS];
   let chart = null;
   let series = null;
@@ -31,9 +45,35 @@
     return t;
   }
 
-  function minuteBucket(ms) {
+  function tfStep(tf) {
+    return TIMEFRAMES.find((t) => t.id === tf)?.step || 60;
+  }
+
+  function barBucket(ms, tf) {
     const sec = Math.floor(ms / 1000);
-    return Math.floor(sec / 60) * 60;
+    if (tf === "MN1") {
+      const d = new Date(ms);
+      return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) / 1000);
+    }
+    if (tf === "W1") {
+      const d = new Date(ms);
+      const day = d.getUTCDay();
+      const diff = day === 0 ? 6 : day - 1;
+      return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - diff) / 1000);
+    }
+    const step = tfStep(tf);
+    return Math.floor(sec / step) * step;
+  }
+
+  function applyTimeScaleOptions() {
+    if (!chart) return;
+    const intraday = ["M1", "M5", "M15", "M30", "H1", "H4"].includes(activeTimeframe);
+    chart.applyOptions({
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: activeTimeframe === "M1",
+      },
+    });
   }
 
   function priceDrift(mid) {
@@ -48,7 +88,7 @@
     const bid = Number(tick.bid);
     const ask = Number(tick.ask);
     const mid = anchorFromTick(tick);
-    const bucket = minuteBucket(tickTimeMs(tick));
+    const bucket = barBucket(tickTimeMs(tick), activeTimeframe);
     const last = barBuffer[barBuffer.length - 1];
     if (last && last.time === bucket) {
       last.high = Math.max(last.high, ask, mid);
@@ -66,7 +106,7 @@
     const bid = Number(tick.bid);
     const ask = Number(tick.ask);
     const mid = anchorFromTick(tick);
-    const bucket = minuteBucket(tickTimeMs(tick));
+    const bucket = barBucket(tickTimeMs(tick), activeTimeframe);
     const last = barBuffer[barBuffer.length - 1];
     if (!last || last.time < bucket) {
       const bar = { time: bucket, open: mid, high: ask, low: bid, close: mid };
@@ -127,6 +167,7 @@
         wickUpColor: "#22c55e",
         wickDownColor: "#ef4444",
       });
+      applyTimeScaleOptions();
       const resize = () => {
         if (!chart || !container.isConnected) return;
         const w = Math.max(container.clientWidth, 320);
@@ -167,6 +208,52 @@
   function fmtPrice(symbol, value) {
     const digits = symbolMeta[symbol]?.digits ?? { EURUSD: 5, GBPUSD: 5, USDJPY: 3, XAUUSD: 2, BTCUSD: 3 }[symbol] ?? 5;
     return Number(value).toFixed(digits);
+  }
+
+  function loadTimeframePref() {
+    try {
+      const saved = localStorage.getItem(STORAGE_TF);
+      if (saved && TIMEFRAMES.some((t) => t.id === saved)) activeTimeframe = saved;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function saveTimeframePref() {
+    try {
+      localStorage.setItem(STORAGE_TF, activeTimeframe);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function renderTimeframes() {
+    const root = document.getElementById("trade-timeframes");
+    if (!root) return;
+    root.innerHTML = TIMEFRAMES.map(
+      (tf) =>
+        `<button type="button" class="trade-tf-btn${tf.id === activeTimeframe ? " active" : ""}" data-tf="${tf.id}" role="tab" aria-selected="${tf.id === activeTimeframe}">${tf.label}</button>`
+    ).join("");
+  }
+
+  function bindTimeframes() {
+    const root = document.getElementById("trade-timeframes");
+    if (!root) return;
+    root.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-tf]");
+      if (!btn) return;
+      const tf = btn.dataset.tf;
+      if (!tf || tf === activeTimeframe) return;
+      activeTimeframe = tf;
+      saveTimeframePref();
+      renderTimeframes();
+      applyTimeScaleOptions();
+      loadChart(activeSymbol);
+    });
+  }
+
+  function tfLabel(tf) {
+    return TIMEFRAMES.find((t) => t.id === tf)?.label || tf;
   }
 
   function loadTabs() {
@@ -519,7 +606,7 @@
       }
 
       const hist = await window.AlphaFXApi.request(
-        `/api/v1/market/history?symbol=${encodeURIComponent(symbol)}&timeframe=M1&limit=240&anchor=${encodeURIComponent(anchor)}`
+        `/api/v1/market/history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(activeTimeframe)}&limit=300&anchor=${encodeURIComponent(anchor)}`
       );
       const nextBars = (hist.bars || []).map((b) => ({
         time: Math.floor(b.time),
@@ -535,8 +622,9 @@
       series.setData(barBuffer);
       mergeLiveTick(tick);
       chart.timeScale().fitContent();
+      applyTimeScaleOptions();
       const src = hist.source === "mt5" ? "MT5" : hist.source === "synthetic" ? "Demo" : "Live";
-      if (badge) badge.textContent = `${src} | ${symbol} · ${barBuffer.length} bars`;
+      if (badge) badge.textContent = `${src} | ${symbol} · ${tfLabel(activeTimeframe)} · ${barBuffer.length} bars`;
     } catch (e) {
       console.error("loadChart failed:", e);
     } finally {
@@ -580,6 +668,9 @@
 
     bindBottomTabs();
     bindWatchlistToggle();
+    loadTimeframePref();
+    renderTimeframes();
+    bindTimeframes();
     document.getElementById("pt-sidebar-toggle")?.addEventListener("click", () => {
       setTimeout(resizeChartSoon, 280);
     });
