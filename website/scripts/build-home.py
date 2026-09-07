@@ -62,6 +62,10 @@ PROOF_SECTION_RE = re.compile(
     r'<section class="hp-proof"[^>]*>.*?</section>',
     re.DOTALL,
 )
+CAPIFY_SOCIAL_RE = re.compile(
+    r'<a href="[^"]*capiff[^"]*"[^>]*>.*?</a>',
+    re.I | re.DOTALL,
+)
 
 
 def extract_content(html: str) -> str | None:
@@ -78,6 +82,7 @@ def extract_content(html: str) -> str | None:
 
 def transform(content: str) -> str:
     content = PROOF_SECTION_RE.sub("", content)
+    content = CAPIFY_SOCIAL_RE.sub("", content)
     content = IMG_RE.sub(r"img/home/\1", content)
     for old, new in LINK_REPLACEMENTS:
         content = content.replace(old, new)
