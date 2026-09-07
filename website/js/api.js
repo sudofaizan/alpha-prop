@@ -79,6 +79,13 @@
         method: "PATCH",
         body: JSON.stringify({ blocked, reason: reason || null }),
       }),
+    adminStrikeUser: (id, rule_label, reason) =>
+      request(`/api/v1/admin/users/${id}/strike`, {
+        method: "POST",
+        body: JSON.stringify({ rule_label, reason }),
+      }),
+    adminClearStrikes: (id) => request(`/api/v1/admin/users/${id}/strikes`, { method: "DELETE" }),
+    adminUserStrikes: (id) => request(`/api/v1/admin/users/${id}/strikes`),
     getBilling: () => request("/api/v1/billing"),
     getNotifications: () => request("/api/v1/notifications"),
     getUnreadCount: () => request("/api/v1/notifications/unread-count"),

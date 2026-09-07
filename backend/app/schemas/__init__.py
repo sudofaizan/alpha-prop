@@ -97,6 +97,32 @@ class DashboardResponse(BaseModel):
     primary_account: AccountSummary | None = None
     total_accounts: int = 0
     total_spent: float = 0.0
+    user_name: str = ""
+    strike_count: int = 0
+    strike_limit: int = 2
+    is_breached: bool = False
+    risk_warnings: list["RiskWarningOut"] = []
+
+
+class StrikeOut(BaseModel):
+    id: int
+    rule_label: str
+    reason: str
+    created_at: str
+
+
+class RiskWarningOut(BaseModel):
+    kind: str
+    title: str
+    subtitle: str
+    rule_label: str | None = None
+    strike_count: int = 0
+    strike_limit: int = 2
+
+
+class AddStrikeRequest(BaseModel):
+    rule_label: str = Field(min_length=2, max_length=120)
+    reason: str = Field(min_length=3, max_length=500)
 
 
 class AdminUserOut(BaseModel):
@@ -106,6 +132,9 @@ class AdminUserOut(BaseModel):
     is_admin: bool
     is_blocked: bool
     blocked_reason: str | None = None
+    strike_count: int = 0
+    strike_limit: int = 2
+    is_breached: bool = False
     account_count: int = 0
     order_count: int = 0
     created_at: str

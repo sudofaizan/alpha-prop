@@ -179,10 +179,19 @@
       const btn = u.is_blocked
         ? `<button class="admin-btn admin-btn--ok" data-unblock="${u.id}">Unblock</button>`
         : `<button class="admin-btn admin-btn--danger" data-block="${u.id}">Block</button>`;
+      const strikeBtn =
+        u.is_admin || (u.strike_count ?? 0) >= (u.strike_limit ?? 2)
+          ? ""
+          : `<button class="admin-btn admin-btn--warn" data-strike="${u.id}" data-strikes="${u.strike_count ?? 0}">Strike</button>`;
       const online = u.is_online ? `<span class="admin-dot admin-dot--ok"></span>Online` : `<span class="admin-dot"></span>Offline`;
+      const strikeLabel =
+        (u.strike_count ?? 0) > 0
+          ? `<span style="color:${u.is_breached ? "#fca5a5" : "#fbbf24"};">${u.strike_count}/${u.strike_limit ?? 2}${u.is_breached ? " · Breached" : ""}</span>`
+          : "0";
       return `<tr>
         <td>${u.full_name}<br><span class="admin-muted">${u.email}</span></td>
         <td>${u.is_admin ? "Admin" : "Trader"}</td>
+        <td>${strikeLabel}</td>
         <td>${u.account_count}</td>
         <td>${u.funded_count ?? 0}</td>
         <td>${u.open_positions ?? 0} / ${u.pending_orders ?? 0}</td>
@@ -190,11 +199,12 @@
         <td>${u.is_blocked ? `<span style="color:#fca5a5;">Blocked</span><br><small>${u.blocked_reason || ""}</small>` : "Active"}</td>
         <td><div class="admin-actions">
           <button class="admin-btn admin-btn--gold" data-user-stats="${u.id}">Stats</button>
+          ${strikeBtn}
           ${u.is_admin ? "" : btn}
         </div></td>
       </tr>`;
     });
-    setPanel(table(["User", "Role", "Accounts", "Funded", "Open/Pending", "Session", "Status", "Actions"], rows));
+    setPanel(table(["User", "Role", "Strikes", "Accounts", "Funded", "Open/Pending", "Session", "Status", "Actions"], rows));
   }
 
   async function renderUserDetail(userId) {
@@ -246,15 +256,37 @@
     const btn = u.is_blocked
       ? `<button class="admin-btn admin-btn--ok" data-unblock="${u.id}">Unblock user</button>`
       : `<button class="admin-btn admin-btn--danger" data-block="${u.id}">Block user</button>`;
+    const strikeBtn =
+      u.is_admin || (u.strike_count ?? 0) >= (u.strike_limit ?? 2)
+        ? ""
+        : `<button class="admin-btn admin-btn--warn" data-strike="${u.id}" data-strikes="${u.strike_count ?? 0}">Issue strike</button>`;
+    const clearStrikeBtn =
+      (u.strike_count ?? 0) > 0 ? `<button class="admin-btn" data-clear-strikes="${u.id}">Clear strikes</button>` : "";
+
+    let strikesHtml = "";
+    try {
+      const strikeData = await window.AlphaFXApi.adminUserStrikes(userId);
+      if (strikeData.items?.length) {
+        strikesHtml = `<div class="admin-table-wrap" style="margin-top:12px;"><table class="admin-table"><thead><tr><th>Rule</th><th>Reason</th><th>Date</th></tr></thead><tbody>${strikeData.items
+          .map(
+            (s) => `<tr><td>${s.rule_label}</td><td>${s.reason}</td><td>${s.created_at ? new Date(s.created_at).toLocaleString() : "—"}</td></tr>`
+          )
+          .join("")}</tbody></table></div>`;
+      } else {
+        strikesHtml = `<p class="admin-muted" style="margin-top:8px;">No strikes on record.</p>`;
+      }
+    } catch {
+      strikesHtml = `<p class="admin-muted" style="margin-top:8px;">Could not load strikes.</p>`;
+    }
 
     setPanel(`
       <div class="admin-detail-head">
         <button type="button" class="admin-btn" data-admin-back>← Back to users</button>
         <div>
           <h2 class="admin-section-title">${u.full_name}</h2>
-          <p class="admin-muted">${u.email} · ${u.is_blocked ? "Blocked" : "Active"} · ${u.is_online ? "Online" : "Offline"}</p>
+          <p class="admin-muted">${u.email} · ${u.is_blocked ? "Blocked" : "Active"} · ${u.is_online ? "Online" : "Offline"} · Strikes ${u.strike_count ?? 0}/${u.strike_limit ?? 2}${u.is_breached ? " · Breached" : ""}</p>
         </div>
-        <div class="admin-actions">${u.is_admin ? "" : btn}</div>
+        <div class="admin-actions">${strikeBtn}${clearStrikeBtn}${u.is_admin ? "" : btn}</div>
       </div>
       <div class="admin-detail-stats">
         <div class="admin-stat"><div class="admin-stat-label">Accounts</div><div class="admin-stat-value">${u.account_count}</div></div>
@@ -263,6 +295,8 @@
         <div class="admin-stat"><div class="admin-stat-label">Closed trades</div><div class="admin-stat-value">${stats.closed_trades ?? 0}</div></div>
         <div class="admin-stat"><div class="admin-stat-label">Realised P/L</div><div class="admin-stat-value">${money(stats.realised_pnl ?? 0)}</div></div>
       </div>
+      <h3 class="admin-section-title" style="margin-top:8px;">Strikes</h3>
+      ${strikesHtml}
       <div class="admin-field" style="margin:16px 0;">
         <label for="admin-account-select">Account</label>
         <select id="admin-account-select" class="admin-select">${accountOptions || `<option value="">No accounts</option>`}</select>
@@ -347,6 +381,42 @@
     }
   }
 
+  async function adminStrikeUser(userId, currentCount) {
+    const limit = 2;
+    if (currentCount >= limit) {
+      alert(`User already has ${limit} strikes — account is breached.`);
+      return;
+    }
+    const rule = prompt(
+      "Rule violated (e.g. News Trading, Copy Trading, Hedging):",
+      "News Trading"
+    );
+    if (!rule || !rule.trim()) return;
+    const reason = prompt("Strike details (shown on user dashboard warning):");
+    if (!reason || !reason.trim()) return;
+    try {
+      const res = await window.AlphaFXApi.adminStrikeUser(userId, rule.trim(), reason.trim());
+      alert(res.message || "Strike issued");
+      await loadStats();
+      if (userDetailId) await renderUserDetail(userDetailId);
+      else await renderTab();
+    } catch (err) {
+      alert(err.message || "Strike failed");
+    }
+  }
+
+  async function adminClearStrikes(userId) {
+    if (!confirm("Clear all strikes for this user? This does not restore breached accounts.")) return;
+    try {
+      const res = await window.AlphaFXApi.adminClearStrikes(userId);
+      alert(res.message || "Strikes cleared");
+      if (userDetailId) await renderUserDetail(userDetailId);
+      else await renderTab();
+    } catch (err) {
+      alert(err.message || "Clear failed");
+    }
+  }
+
   async function handleAdminClick(e) {
     const tabBtn = e.target.closest("#admin-tabs .admin-tab");
     if (tabBtn) {
@@ -370,6 +440,20 @@
       e.preventDefault();
       setActiveTab("users", { keepDetail: true });
       await renderUserDetail(Number(statsBtn.dataset.userStats));
+      return;
+    }
+
+    const strikeBtn = e.target.closest("[data-strike]");
+    if (strikeBtn) {
+      e.preventDefault();
+      await adminStrikeUser(Number(strikeBtn.dataset.strike), Number(strikeBtn.dataset.strikes || 0));
+      return;
+    }
+
+    const clearStrikesBtn = e.target.closest("[data-clear-strikes]");
+    if (clearStrikesBtn) {
+      e.preventDefault();
+      await adminClearStrikes(Number(clearStrikesBtn.dataset.clearStrikes));
       return;
     }
 

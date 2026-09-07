@@ -24,3 +24,4 @@ class User(Base):
     accounts = relationship("ChallengeAccount", back_populates="user", cascade="all, delete-orphan")
     orders = relationship("Order", back_populates="user", cascade="all, delete-orphan")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+    strikes = relationship("UserStrike", back_populates="user", cascade="all, delete-orphan", order_by="UserStrike.created_at.desc()")

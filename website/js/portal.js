@@ -149,6 +149,24 @@
     }
   }
 
+  function riskBanner(warning) {
+    const isBreached = warning.kind === "breached";
+    const count = Number(warning.strike_count || 0).toFixed(2);
+    const limit = warning.strike_limit || 2;
+    const icon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`;
+    const reason = String(warning.subtitle || "").split(" · ").slice(2).join(" · ") || "Manage risk carefully";
+    const sub = isBreached
+      ? warning.subtitle
+      : `Current <span class="pt-num" style="color:#f59e0b;font-weight:700;">${count}</span> · limit <span class="pt-num">${limit}</span> · ${reason}`;
+    return `<div class="pt-banner pt-banner--warn"${isBreached ? ' style="border-color:rgba(239,68,68,0.45);"' : ""}>
+      <div class="pt-banner-icon">${icon}</div>
+      <div class="pt-banner-body">
+        <div class="pt-banner-title">${warning.title}</div>
+        <div class="pt-banner-sub">${sub}</div>
+      </div>
+    </div>`;
+  }
+
   async function renderDashboard() {
     const root = document.getElementById("portal-dashboard-root");
     if (!root) return;
@@ -160,18 +178,64 @@
         return;
       }
       const a = data.primary_account;
+      const start = Number(a.starting_balance || a.account_size || 0);
+      const equity = Number(a.equity || 0);
+      const totalPnl = equity - start;
+      const eqPct = start ? ((equity - start) / start) * 100 : 0;
+      const eqTrendClass = eqPct >= 0 ? "is-up" : "is-down";
+      const eqTrendSign = eqPct >= 0 ? "▲" : "▼";
+      const pnlClass = totalPnl >= 0 ? "is-success" : totalPnl < 0 ? "is-danger" : "";
+      const dailyLimit = start * (a.max_daily_loss_pct / 100);
+      const targetAmt = start * (a.profit_target_pct / 100);
+      const warnings = (data.risk_warnings || []).map(riskBanner).join("");
+      const userName = data.user_name || window.__ALPHAFX_USER?.full_name || "Trader";
+
       root.innerHTML = `
-        <header class="pt-header"><div class="pt-header-body">
-          <span class="pt-header-tag">Primary account</span>
-          <h1 class="pt-header-title">${a.account_size_label} · #${a.account_number}</h1>
-          <p class="pt-header-sub">${a.program_label} · ${a.phase_label}</p>
-        </div><div class="pt-header-actions">
-          <a class="pt-btn pt-btn--primary" href="index.html">+ New challenge</a>
-        </div></header>
+        <header class="pt-header">
+          <div class="pt-header-body">
+            <span class="pt-header-tag"><span class="pt-chip-dot" style="background:var(--gold);"></span>Welcome back</span>
+            <h1 class="pt-header-title">${userName}<span style="color:var(--text-mute);font-weight:500;"> · </span>Evaluation</h1>
+            <p class="pt-header-sub">Live performance for <strong style="color:var(--text);">account #${a.account_number}</strong> on the ${a.account_size_label} challenge.</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+              <span class="pt-chip pt-chip--gold"><span class="pt-chip-dot"></span>${a.phase_label}</span>
+              <span class="pt-chip">${a.account_size_label.replace("$", "")}</span>
+              ${data.is_breached ? `<span class="pt-chip pt-chip--danger">Breached</span>` : ""}
+            </div>
+          </div>
+          <div class="pt-header-actions">
+            <a class="pt-btn pt-btn--ghost" href="accounts.html">My accounts</a>
+            <a class="pt-btn pt-btn--primary" href="index.html">+ New challenge</a>
+          </div>
+        </header>
+        ${warnings ? `<div class="pt-stagger" style="display:flex;flex-direction:column;gap:8px;">${warnings}</div>` : ""}
         <div class="pt-grid-stats pt-stagger">
-          <div class="pt-stat-card pt-stat-card--gold"><div class="pt-stat-label">Equity</div><div class="pt-stat-value is-gold">${money(a.equity)}</div></div>
-          <div class="pt-stat-card"><div class="pt-stat-label">Total spent</div><div class="pt-stat-value is-gold">${money(data.total_spent)}</div></div>
-          <div class="pt-stat-card"><div class="pt-stat-label">Accounts</div><div class="pt-stat-value">${data.total_accounts}</div></div>
+          <div class="pt-stat-card pt-stat-card--gold">
+            <div class="pt-stat-label">Account equity</div>
+            <div class="pt-stat-value is-gold">${money(equity)}</div>
+            <div class="pt-stat-trend ${eqTrendClass}">${eqTrendSign} ${pct(Math.abs(eqPct), 2)}</div>
+            <div class="pt-stat-foot">Balance: ${money(a.balance)}</div>
+          </div>
+          <div class="pt-stat-card">
+            <div class="pt-stat-label">Open P&amp;L</div>
+            <div class="pt-stat-value ${Number(a.open_pnl) >= 0 ? "is-success" : Number(a.open_pnl) < 0 ? "is-danger" : ""}">${money(a.open_pnl)}</div>
+            <div class="pt-stat-foot">Live unrealised</div>
+          </div>
+          <div class="pt-stat-card">
+            <div class="pt-stat-label">Total profit</div>
+            <div class="pt-stat-value ${pnlClass}">${totalPnl >= 0 ? "" : "-"}${money(Math.abs(totalPnl))}</div>
+            <div class="pt-stat-trend ${eqTrendClass}">${eqTrendSign} ${pct(Math.abs(eqPct), 2)}</div>
+            <div class="pt-stat-foot">Target: ${money(targetAmt)} · ${pct(a.profit_target_progress, 1)} done</div>
+          </div>
+          <div class="pt-stat-card">
+            <div class="pt-stat-label">Daily limit</div>
+            <div class="pt-stat-value">${money(dailyLimit)}</div>
+            <div class="pt-stat-foot">Used ${pct(a.daily_loss_used_pct, 2)} of ${pct(a.max_daily_loss_pct, 0)}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+          <a class="pt-btn pt-btn--primary" href="trade.html">Trade now</a>
+          <a class="pt-btn pt-btn--ghost" href="account-statistics.html?id=${a.id}">View statistics</a>
+          <a class="pt-btn pt-btn--ghost" href="accounts.html">All accounts (${data.total_accounts})</a>
         </div>`;
     } catch (err) {
       root.innerHTML = `<div class="pt-card" style="padding:24px;color:var(--danger);">${err.message}</div>`;

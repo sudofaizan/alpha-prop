@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 from app.data import plans as plan_data
 from app.models import ChallengeAccount, Order, User
 from app.services.notifications import notify_checkout
-from app.schemas import AccountSummary, AccountsListResponse, DashboardResponse
+from app.models.user_strike import STRIKE_LIMIT
+from app.services.strikes import risk_warnings_for_user, strike_count
 
 
 def _size_label(size: int) -> str:
@@ -102,11 +103,18 @@ def dashboard_for_user(db: Session, user: User) -> DashboardResponse:
     )
     total_spent = sum(o.amount for o in user.orders if o.status == "paid")
     primary = account_to_summary(accounts[0]) if accounts else None
+    strikes = strike_count(db, user.id)
+    warnings = risk_warnings_for_user(db, user)
     return DashboardResponse(
         has_accounts=bool(accounts),
         primary_account=primary,
         total_accounts=len(accounts),
         total_spent=round(total_spent, 2),
+        user_name=user.full_name,
+        strike_count=strikes,
+        strike_limit=STRIKE_LIMIT,
+        is_breached=strikes >= STRIKE_LIMIT,
+        risk_warnings=warnings,
     )
 
 

@@ -6,10 +6,12 @@ from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.dependencies_admin import get_admin_user
 from app.models import ChallengeAccount, Order, SimTrade, User, UserSession
-from app.schemas import AdminClosePositionRequest, AdminUserOut, BlockUserRequest, MessageResponse
+from app.schemas import AdminClosePositionRequest, AdminUserOut, AddStrikeRequest, BlockUserRequest, MessageResponse, StrikeOut
 from app.services import sim_engine
 from app.services.accounts import account_to_summary
 from app.services.notifications import create_notification
+from app.services.strikes import RULE_PRESETS, add_strike, clear_strikes, list_strikes, strike_count
+from app.models.user_strike import STRIKE_LIMIT
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -52,6 +54,7 @@ def _admin_user_row(db: Session, user: User) -> dict:
     account_count = db.query(ChallengeAccount).filter(ChallengeAccount.user_id == user.id).count()
     order_count = db.query(Order).filter(Order.user_id == user.id).count()
     trading = _user_trading_counts(db, user.id)
+    strikes = strike_count(db, user.id)
     return {
         "id": user.id,
         "email": user.email,
@@ -59,6 +62,9 @@ def _admin_user_row(db: Session, user: User) -> dict:
         "is_admin": user.is_admin,
         "is_blocked": user.is_blocked,
         "blocked_reason": user.blocked_reason,
+        "strike_count": strikes,
+        "strike_limit": STRIKE_LIMIT,
+        "is_breached": strikes >= STRIKE_LIMIT,
         "account_count": account_count,
         "order_count": order_count,
         "funded_count": trading["funded_accounts"],
@@ -189,6 +195,69 @@ def block_user(
 
     row = _admin_user_row(db, user)
     return AdminUserOut(**{k: row[k] for k in AdminUserOut.model_fields})
+
+
+@router.post("/users/{user_id}/strike", response_model=MessageResponse)
+def issue_strike(
+    user_id: int,
+    payload: AddStrikeRequest,
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "User not found"})
+    if user.is_admin:
+        raise HTTPException(status_code=400, detail={"code": "INVALID", "message": "Cannot strike admin users"})
+    try:
+        strike, breached = add_strike(
+            db,
+            user,
+            rule_label=payload.rule_label,
+            reason=payload.reason,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"code": "INVALID", "message": str(exc)}) from exc
+
+    count = strike_count(db, user.id)
+    if breached:
+        return MessageResponse(message=f"Strike {count}/{STRIKE_LIMIT} issued — user accounts breached")
+    return MessageResponse(message=f"Strike {count}/{STRIKE_LIMIT} issued — {strike.rule_label}")
+
+
+@router.delete("/users/{user_id}/strikes", response_model=MessageResponse)
+def remove_strikes(
+    user_id: int,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "User not found"})
+    removed = clear_strikes(db, user)
+    return MessageResponse(message=f"Cleared {removed} strike(s)")
+
+
+@router.get("/users/{user_id}/strikes")
+def get_user_strikes(user_id: int, _admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == user_id).one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "User not found"})
+    items = list_strikes(db, user.id)
+    return {
+        "strike_count": len(items),
+        "strike_limit": STRIKE_LIMIT,
+        "rule_presets": RULE_PRESETS,
+        "items": [
+            StrikeOut(
+                id=s.id,
+                rule_label=s.rule_label,
+                reason=s.reason,
+                created_at=s.created_at.isoformat() if s.created_at else "",
+            ).model_dump()
+            for s in items
+        ],
+    }
 
 
 @router.get("/trading/live")

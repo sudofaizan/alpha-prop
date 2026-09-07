@@ -18,7 +18,6 @@ def _migrate_sim_trades() -> None:
         if "admin_close_message" not in cols:
             conn.execute(text("ALTER TABLE sim_trades ADD COLUMN admin_close_message TEXT"))
 
-
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _migrate_sim_trades()
