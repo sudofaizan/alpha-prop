@@ -270,7 +270,7 @@ server {
     server_name _;
 
     root ${WEB_ROOT};
-    index dashboard.html index.html;
+    index home.html dashboard.html index.html;
 
     location /api/ {
         proxy_pass http://127.0.0.1:8000;
@@ -324,6 +324,8 @@ if [[ -d "$TICK_HUB_DIR" ]]; then
 fi
 STATIC_CODE="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/register.html 2>/dev/null || echo '000')"
 [[ "$STATIC_CODE" == "200" ]] || die "nginx static check failed (GET /register.html → HTTP ${STATIC_CODE}). Try: curl -v http://127.0.0.1/register.html"
+HOME_CODE="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/ 2>/dev/null || echo '000')"
+[[ "$HOME_CODE" == "200" ]] || die "nginx landing check failed (GET / → HTTP ${HOME_CODE}). Ensure home.html is deployed and index lists home.html first."
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 cat <<EOF

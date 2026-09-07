@@ -2,7 +2,7 @@
  * AlphaFX auth — single session, route guard, user hydration
  */
 (function () {
-  const PUBLIC_PAGES = new Set(["login", "register"]);
+  const PUBLIC_PAGES = new Set(["home", "login", "register"]);
 
   function currentPage() {
     return document.body.dataset.page || "";
@@ -42,6 +42,7 @@
   }
 
   async function requireAuth() {
+    if (currentPage() === "home") return null;
     if (PUBLIC_PAGES.has(currentPage())) return null;
     if (!window.AlphaFXApi.getToken()) {
       redirectToLogin();
@@ -139,7 +140,7 @@
       if (!btn) return;
       e.preventDefault();
       await logout();
-      window.location.href = "login.html";
+      window.location.href = "home.html";
     });
   }
 
