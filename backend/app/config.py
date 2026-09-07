@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     admin_email: str = "admin@alphafx.com"
     admin_password: str = "AdminFX2026!"
     admin_name: str = "AlphaFX Admin"
+    tick_hub_ws: str = ""
+    tick_mock: bool = True
 
     @property
     def cors_origin_list(self) -> list[str]:

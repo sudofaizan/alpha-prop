@@ -306,6 +306,52 @@ If using S3 for frontend + EC2 for API only, set `website/js/config.js` to your 
 
 ---
 
+## Live market ticks (MT5 tick hub)
+
+Phase 1–3 of the web terminal: **tick hub → WebSocket → Trade page**.
+
+### Local dev (mock ticks, no MT5)
+
+```bash
+# Terminal 1 — API (mock ticks built-in when ALPHAFX_TICK_MOCK=true)
+cd backend && ./run.sh
+
+# Optional Terminal 2 — standalone tick hub with --mock
+cd services/tick-hub && TICK_HUB_MOCK=1 ./run.sh
+# Then in backend/.env: ALPHAFX_TICK_HUB_WS=ws://127.0.0.1:9002 and ALPHAFX_TICK_MOCK=false
+```
+
+Open **http://127.0.0.1:3000/trade.html** (or your static server) while logged in — watchlist and chart update live.
+
+### Windows EC2 (MT5 → tick hub)
+
+1. Install MT5, copy [`mt5/TickPublisher.mq5`](mt5/TickPublisher.mq5) into `MQL5/Experts/`, compile, attach to any chart.
+2. Run tick hub on Windows (or Linux reachable from MT5):
+
+```bash
+cd services/tick-hub
+pip install -r requirements.txt
+python hub.py   # TCP :9001 (EA), WS :9002 (portal), health :9003
+```
+
+3. EA inputs: `InpHubHost=127.0.0.1`, `InpHubPort=9001`, symbols list.
+4. On Linux portal EC2 `backend/.env`:
+
+```env
+ALPHAFX_TICK_MOCK=false
+ALPHAFX_TICK_HUB_WS=ws://WINDOWS_PRIVATE_IP:9002
+```
+
+Security group: allow **9002** from Linux EC2 IP only (not public).
+
+### Architecture
+
+```
+MT5 EA (OnTick) --TCP:9001--> Tick Hub --WS:9002--> FastAPI /ws/quotes --> Browser trade.html
+```
+
+---
+
 ## Local troubleshooting
 
 | Problem | Fix |
@@ -326,5 +372,8 @@ If using S3 for frontend + EC2 for API only, set `website/js/config.js` to your 
 - [x] Dynamic accounts, dashboard, billing, notifications
 - [x] Admin panel (block users)
 - [x] EC2 deploy script + nginx
+- [x] Tick hub + WebSocket quotes + Trade terminal shell (mock/MT5)
+- [ ] MT5 Manager API order routing (web BUY/SELL)
+- [ ] TradingView Charting Library (Capiffy parity)
 - [ ] Real Stripe payment
 - [ ] MT5 trade sync + live statistics

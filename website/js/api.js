@@ -74,5 +74,10 @@
     getNotifications: () => request("/api/v1/notifications"),
     getUnreadCount: () => request("/api/v1/notifications/unread-count"),
     markAllNotificationsRead: () => request("/api/v1/notifications/read-all", { method: "POST" }),
+    getTradeSnapshot: (accountId) =>
+      request(`/api/v1/trade/snapshot${accountId ? `?account_id=${accountId}` : ""}`),
+    getMarketSymbols: () => request("/api/v1/market/symbols"),
+    getMarketHistory: (symbol, timeframe = "M1", limit = 240) =>
+      request(`/api/v1/market/history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}`),
   };
 })();

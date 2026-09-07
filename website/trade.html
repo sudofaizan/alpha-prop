@@ -5,38 +5,85 @@
   <meta name="theme-color" content="#13131a">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Trade — AlphaFX</title>
-    <link rel="stylesheet" href="css/capiffy/dbe7481feefb38d2.css">
+  <link rel="stylesheet" href="css/capiffy/dbe7481feefb38d2.css">
   <link rel="stylesheet" href="css/capiffy/59f9d657f37015b6.css">
   <link rel="stylesheet" href="css/capiffy/c1bee8ab903b382d.css">
   <link rel="stylesheet" href="css/capiffy/3ac04c147fc81d91.css">
   <link rel="stylesheet" href="css/capiffy/3c6a7efccbedf43f.css">
   <link rel="stylesheet" href="css/fonts.css">
-  <link rel="stylesheet" href="css/challenges-bridge.css">
+  <link rel="stylesheet" href="css/trade-terminal.css">
 </head>
-<body data-page="trade" data-title="Trade">
+<body data-page="trade" data-title="Trade" data-no-wrap="true">
   <div id="app-root">
-    <div class="page-intro" style="margin-bottom:1.25rem">
-      <h2>Trade</h2>
-      <p>Launch MetaTrader 5 or connect via web terminal.</p>
-    </div>
-    <div class="platform-box" style="max-width:480px;margin-bottom:1rem">
-      <div class="platform-box-inner">
-        <div class="platform-logo">A</div>
-        <div>
-          <div class="platform-label">TRADING PLATFORM</div>
-          <div class="platform-name">MetaTrader 5 · Skyriss Securities</div>
+    <div class="trade-terminal">
+      <div class="trade-topbar">
+        <div class="trade-symbol-tabs" id="trade-symbol-tabs"></div>
+        <div class="trade-account-bar" id="trade-account-bar">
+          <select id="trade-account-select" class="trade-account-select" aria-label="Trading account"></select>
+          <span class="trade-account-balance" id="trade-account-balance">—</span>
+        </div>
+        <div class="trade-status">
+          <span class="trade-status-dot" id="trade-live-dot"></span>
+          <span id="trade-live-label">Connecting…</span>
         </div>
       </div>
-    </div>
-    <div class="empty-state wide">
-      <h3>Web terminal coming soon</h3>
-      <p>For now, download MT5 and log in with your challenge credentials from My Accounts.</p>
-      <a href="accounts.html" class="btn-gold-sm">My Accounts</a>
+
+      <div class="trade-main">
+        <aside class="trade-watchlist" id="trade-watchlist" aria-label="Watchlist"></aside>
+
+        <section class="trade-chart-wrap">
+          <div class="trade-chart-badge" id="trade-chart-badge">Loading…</div>
+          <div id="trade-chart"></div>
+        </section>
+
+        <aside class="trade-ticket">
+          <div class="trade-ticket-tabs" id="trade-order-type-tabs">
+            <button type="button" class="active" data-type="market">Market</button>
+            <button type="button" disabled data-type="limit">Limit</button>
+            <button type="button" disabled data-type="stop">Stop</button>
+          </div>
+          <div class="trade-field">
+            <label for="trade-volume">Volume (lots)</label>
+            <input id="trade-volume" type="number" value="0.01" min="0.01" step="0.01" disabled>
+          </div>
+          <div class="trade-field">
+            <label for="trade-sl">Stop loss (optional)</label>
+            <input id="trade-sl" type="text" placeholder="—" disabled>
+          </div>
+          <div class="trade-field">
+            <label for="trade-tp">Take profit (optional)</label>
+            <input id="trade-tp" type="text" placeholder="—" disabled>
+          </div>
+          <div class="trade-actions">
+            <button type="button" class="sell" id="trade-sell-btn" disabled>SELL<br><span class="sub" id="trade-sell-px">—</span></button>
+            <button type="button" class="buy" id="trade-buy-btn" disabled>BUY<br><span class="sub" id="trade-buy-px">—</span></button>
+          </div>
+          <div class="trade-metrics" id="trade-metrics">
+            <div class="trade-metric-row"><span>Equity</span><span id="trade-equity">—</span></div>
+            <div class="trade-metric-row"><span>Balance</span><span id="trade-balance">—</span></div>
+            <div class="trade-metric-row"><span>Free margin</span><span id="trade-free-margin">—</span></div>
+            <div class="trade-metric-row"><span>Margin used</span><span id="trade-margin-used">—</span></div>
+            <div class="trade-metric-row trade-metric-pnl"><span>Unrealised P/L</span><span id="trade-unrealised">—</span></div>
+          </div>
+        </aside>
+      </div>
+
+      <div class="trade-bottom">
+        <div class="trade-bottom-tabs" id="trade-bottom-tabs">
+          <button type="button" class="active" data-panel="open">Open <span class="trade-tab-count" id="trade-count-open">0</span></button>
+          <button type="button" data-panel="pending">Pending <span class="trade-tab-count" id="trade-count-pending">0</span></button>
+          <button type="button" data-panel="closed">Closed <span class="trade-tab-count" id="trade-count-closed">0</span></button>
+        </div>
+        <div class="trade-bottom-body" id="trade-bottom-body"></div>
+      </div>
     </div>
   </div>
+  <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
   <script src="js/layout.js"></script>
   <script src="js/config.js"></script>
   <script src="js/api.js"></script>
   <script src="js/auth.js"></script>
+  <script src="js/ws-quotes.js"></script>
+  <script src="js/trade.js"></script>
 </body>
 </html>
