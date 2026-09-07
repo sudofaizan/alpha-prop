@@ -507,9 +507,18 @@
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
 }
 
+body[data-page="trade"].trade-mt5-mode .trade-pos-overlays {
+  pointer-events: none;
+}
+
+body[data-page="trade"].trade-mt5-mode .cpf-pos-row--entry,
 body[data-page="trade"].trade-mt5-mode .cpf-pos-row--sl,
 body[data-page="trade"].trade-mt5-mode .cpf-pos-row--tp {
   pointer-events: auto;
+}
+
+body[data-page="trade"].trade-mt5-mode .cpf-pos-row--sl,
+body[data-page="trade"].trade-mt5-mode .cpf-pos-row--tp {
   cursor: ns-resize;
   z-index: 5;
 }

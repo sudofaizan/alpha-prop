@@ -37,6 +37,12 @@
   let sliderPane = "close";
   let sliderTouchStartX = 0;
   let sliderBound = false;
+  /** Restores overlay UI state across sync() rebuilds */
+  let syncRestore = null;
+
+  function getRestore(id) {
+    return syncRestore?.get(id) || null;
+  }
 
   function ctx() {
     return getContext?.() || {};
@@ -337,35 +343,37 @@
 
   function ensureStopOverlay(o, kind) {
     const isSl = kind === "sl";
-    if (isSl && o.slLine) return;
-    if (!isSl && o.tpLine) return;
 
     if (isSl) {
-      o.slVal = o.slSaved ? Number(o.pos.sl) : defaultSl(o.pos);
-      o.slLine = createLine(o.slVal, COLORS.sl, o.slSaved, COLORS.slAxis, COLORS.slText);
-      o.slRow = buildTag("sl", o.pos, o.slVal, o.slSaved);
-      overlayRoot?.appendChild(o.slRow);
+      if (!o.slLine) {
+        o.slLine = createLine(o.slVal, COLORS.sl, o.slSaved && !o.slDirty, COLORS.slAxis, COLORS.slText);
+        o.slRow = buildTag("sl", o.pos, o.slVal, o.slSaved && !o.slDirty);
+        overlayRoot?.appendChild(o.slRow);
+      }
     } else {
-      o.tpVal = o.tpSaved ? Number(o.pos.tp) : defaultTp(o.pos);
-      o.tpLine = createLine(o.tpVal, COLORS.tp, o.tpSaved, COLORS.tpAxis, COLORS.tpText);
-      o.tpRow = buildTag("tp", o.pos, o.tpVal, o.tpSaved);
-      overlayRoot?.appendChild(o.tpRow);
+      if (!o.tpLine) {
+        o.tpLine = createLine(o.tpVal, COLORS.tp, o.tpSaved && !o.tpDirty, COLORS.tpAxis, COLORS.tpText);
+        o.tpRow = buildTag("tp", o.pos, o.tpVal, o.tpSaved && !o.tpDirty);
+        overlayRoot?.appendChild(o.tpRow);
+      }
     }
   }
 
   function refreshStopVisibility(o) {
     if (shouldShowSl(o)) {
-      if (!o.slLine) ensureStopOverlay(o, "sl");
-      o.slRow?.classList.toggle("is-draft", !o.slSaved);
-      o.slLine?.applyOptions({ price: o.slVal, lineStyle: lineStyle(o.slSaved) });
+      ensureStopOverlay(o, "sl");
+      const solid = o.slSaved && !o.slDirty;
+      o.slRow?.classList.toggle("is-draft", !solid);
+      o.slLine?.applyOptions({ price: o.slVal, lineStyle: lineStyle(solid) });
     } else {
       removeStopOverlay(o, "sl");
     }
 
     if (shouldShowTp(o)) {
-      if (!o.tpLine) ensureStopOverlay(o, "tp");
-      o.tpRow?.classList.toggle("is-draft", !o.tpSaved);
-      o.tpLine?.applyOptions({ price: o.tpVal, lineStyle: lineStyle(o.tpSaved) });
+      ensureStopOverlay(o, "tp");
+      const solid = o.tpSaved && !o.tpDirty;
+      o.tpRow?.classList.toggle("is-draft", !solid);
+      o.tpLine?.applyOptions({ price: o.tpVal, lineStyle: lineStyle(solid) });
     } else {
       removeStopOverlay(o, "tp");
     }
@@ -438,12 +446,17 @@
     sliderPane = pane;
     const track = document.getElementById("mt5-pos-slider-track");
     const wrap = document.getElementById("mt5-pos-slider-wrap");
+    const o = overlays.get(selectedPosId);
+    const canModify = overlayDirty(o);
     if (track) {
       track.classList.toggle("is-modify", pane === "modify");
       if (!animate) track.style.transition = "none";
       else track.style.transition = "";
+      requestAnimationFrame(() => {
+        if (track.style.transition === "none") track.style.transition = "";
+      });
     }
-    if (wrap) wrap.classList.toggle("can-modify", pane === "modify" || overlayDirty(overlays.get(selectedPosId)));
+    if (wrap) wrap.classList.toggle("can-modify", canModify);
   }
 
   function updateMt5PosBar(pos) {
@@ -560,16 +573,8 @@
     ctx().syncTicketStops?.({ sl: null, tp: null, slSaved: false, tpSaved: false, dragging: false });
   }
 
-  function showStopEditor(kind) {
-    if (!selectedPosId || barMode === "close-only") return;
-    const o = overlays.get(selectedPosId);
-    if (!o) return;
-
+  function showStopLine(o, kind) {
     const isSl = kind === "sl";
-    const visible = isSl ? o.slVisible : o.tpVisible;
-
-    if (visible) return;
-
     if (isSl) {
       o.slVal = o.slSaved ? Number(o.pos.sl) : defaultSl(o.pos);
       o.slBaseline = o.slVal;
@@ -584,6 +589,21 @@
     barMode = "full";
     refreshStopVisibility(o);
     layoutOverlay(o);
+  }
+
+  function showStopEditor(kind) {
+    if (!selectedPosId) return;
+    if (barMode === "close-only") barMode = "full";
+    const o = overlays.get(selectedPosId);
+    if (!o) return;
+    const isSl = kind === "sl";
+    const visible = isSl ? o.slVisible : o.tpVisible;
+    if (!visible) {
+      showStopLine(o, kind);
+    } else {
+      refreshStopVisibility(o);
+      layoutOverlay(o);
+    }
     updateMt5PosBar(o.pos);
     notifyTicket(o);
   }
@@ -638,6 +658,8 @@
       }
       barMode = "full";
       setSliderPane("close");
+      refreshStopVisibility(o);
+      layoutOverlay(o);
       window.AlphaFXToast?.show("Position modified", "success");
       updateMt5PosBar(o.pos);
       notifyTicket(o);
@@ -698,18 +720,23 @@
   function upsertOverlay(pos) {
     if (!series || !overlayRoot) return;
 
+    const restored = getRestore(pos.id);
     const prev = overlays.get(pos.id);
-    const prevState = prev
-      ? {
-          slVisible: prev.slVisible,
-          tpVisible: prev.tpVisible,
-          slDirty: prev.slDirty,
-          tpDirty: prev.tpDirty,
-          slBaseline: prev.slBaseline,
-          tpBaseline: prev.tpBaseline,
-          selected: selectedPosId === pos.id,
-        }
-      : null;
+    const prevState =
+      restored ||
+      (prev
+        ? {
+            slVisible: prev.slVisible,
+            tpVisible: prev.tpVisible,
+            slDirty: prev.slDirty,
+            tpDirty: prev.tpDirty,
+            slBaseline: prev.slBaseline,
+            tpBaseline: prev.tpBaseline,
+            slVal: prev.slVal,
+            tpVal: prev.tpVal,
+            selected: selectedPosId === pos.id,
+          }
+        : null);
 
     stripOverlay(pos.id);
 
@@ -749,6 +776,8 @@
       record.tpDirty = prevState.tpDirty;
       record.slBaseline = prevState.slBaseline;
       record.tpBaseline = prevState.tpBaseline;
+      if (prevState.slVal != null) record.slVal = prevState.slVal;
+      if (prevState.tpVal != null) record.tpVal = prevState.tpVal;
     }
 
     overlays.set(pos.id, record);
@@ -759,14 +788,13 @@
       record.slRow = buildTag("sl", pos, record.slVal, slSaved);
       record.tpRow = buildTag("tp", pos, record.tpVal, tpSaved);
       overlayRoot.append(record.slRow, record.tpRow);
-    } else if (prevState?.selected) {
-      selectedPosId = pos.id;
+    } else if (prevState && (prevState.selected || selectedPosId === pos.id)) {
+      if (prevState.selected) selectedPosId = pos.id;
       refreshStopVisibility(record);
-      updateMt5PosBar(pos);
     }
 
     layoutOverlay(record);
-    notifyTicket(record);
+    if (selectedPosId === pos.id) notifyTicket(record);
   }
 
   function upsertPendingOverlay(p) {
@@ -791,15 +819,20 @@
   function sync() {
     const prevSelected = selectedPosId;
     const prevBarMode = barMode;
-    const prevVis = new Map();
+    const prevSlider = sliderPane;
+    syncRestore = new Map();
+
     for (const [id, o] of overlays) {
-      prevVis.set(id, {
+      syncRestore.set(id, {
         slVisible: o.slVisible,
         tpVisible: o.tpVisible,
         slDirty: o.slDirty,
         tpDirty: o.tpDirty,
         slBaseline: o.slBaseline,
         tpBaseline: o.tpBaseline,
+        slVal: o.slVal,
+        tpVal: o.tpVal,
+        selected: selectedPosId === id,
       });
     }
 
@@ -819,7 +852,10 @@
     drag = null;
     if (overlayRoot) overlayRoot.innerHTML = "";
 
-    if (!series || !chart) return;
+    if (!series || !chart) {
+      syncRestore = null;
+      return;
+    }
 
     const { activeSymbol, open = [], pending = [] } = ctx();
     const positions = open.filter((p) => p.symbol === activeSymbol);
@@ -827,23 +863,11 @@
 
     selectedPosId = prevSelected;
     barMode = prevBarMode;
-    positions.forEach((pos) => {
-      upsertOverlay(pos);
-      const vis = prevVis.get(pos.id);
-      const o = overlays.get(pos.id);
-      if (o && vis && isMt5Mode() && selectedPosId === pos.id) {
-        o.slVisible = vis.slVisible;
-        o.tpVisible = vis.tpVisible;
-        o.slDirty = vis.slDirty;
-        o.tpDirty = vis.tpDirty;
-        o.slBaseline = vis.slBaseline;
-        o.tpBaseline = vis.tpBaseline;
-        refreshStopVisibility(o);
-        layoutOverlay(o);
-      }
-    });
-
+    sliderPane = prevSlider;
+    positions.forEach((pos) => upsertOverlay(pos));
     pendingOrders.forEach(upsertPendingOverlay);
+
+    syncRestore = null;
 
     if (selectedPosId && !overlays.has(selectedPosId)) {
       deselectPosition();
@@ -944,6 +968,11 @@
 
   function beginStopDrag(id, kind, ev) {
     selectedPosId = id;
+    const o = overlays.get(id);
+    if (o) {
+      if (kind === "sl" && !o.slVisible) showStopLine(o, "sl");
+      if (kind === "tp" && !o.tpVisible) showStopLine(o, "tp");
+    }
     ev.preventDefault();
     ev.stopPropagation();
     drag = { id, kind, pointerId: ev.pointerId, moved: false };
@@ -1099,8 +1128,14 @@
       modifyPosition();
     });
 
-    document.getElementById("mt5-pos-sl")?.addEventListener("click", () => showStopEditor("sl"));
-    document.getElementById("mt5-pos-tp")?.addEventListener("click", () => showStopEditor("tp"));
+    document.getElementById("mt5-pos-sl")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      showStopEditor("sl");
+    });
+    document.getElementById("mt5-pos-tp")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      showStopEditor("tp");
+    });
 
     document.getElementById("mt5-pos-bar-dismiss")?.addEventListener("click", () => deselectPosition());
   }
