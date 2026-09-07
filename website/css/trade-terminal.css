@@ -327,8 +327,51 @@
   position: absolute;
   left: 0;
   right: 0;
+  top: 0;
   height: 0;
+  will-change: transform;
   pointer-events: none;
+}
+
+.cpf-mt5-text {
+  position: absolute;
+  left: 6px;
+  top: 0;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  pointer-events: auto;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.cpf-mt5-text--entry {
+  color: #f4f4f5;
+  cursor: pointer;
+}
+
+.cpf-mt5-text--sl {
+  color: #fca5a5;
+  cursor: ns-resize;
+}
+
+.cpf-mt5-text--tp {
+  color: #86efac;
+  cursor: ns-resize;
+}
+
+.cpf-pos-row.is-active .cpf-mt5-text--sl,
+.cpf-pos-row.is-active .cpf-mt5-text--tp {
+  font-weight: 700;
 }
 
 .cpf-pos-row--entry {

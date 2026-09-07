@@ -124,6 +124,17 @@
   }
 
   function updateTagPrices(o) {
+    if (isMt5Mode()) {
+      if (o.slRow && isStopActive(o, "sl")) {
+        const el = o.slRow.querySelector(".cpf-mt5-text-main");
+        if (el) el.textContent = `SL, ${fmtTagPnl(pnlAtPrice(o.pos, o.slVal))}`;
+      }
+      if (o.tpRow && isStopActive(o, "tp")) {
+        const el = o.tpRow.querySelector(".cpf-mt5-text-main");
+        if (el) el.textContent = `TP, ${fmtTagPnl(pnlAtPrice(o.pos, o.tpVal))}`;
+      }
+      return;
+    }
     const slPx = o.slRow?.querySelector(".cpf-pos-tag-pnl");
     const tpPx = o.tpRow?.querySelector(".cpf-pos-tag-pnl");
     if (slPx && o.slVal != null) {
@@ -174,13 +185,27 @@
   function shouldShowSl(o) {
     if (!isMt5Mode()) return true;
     if (selectedPosId !== o.pos.id) return false;
-    return o.slVisible;
+    return o.slVisible || o.slSaved;
   }
 
   function shouldShowTp(o) {
     if (!isMt5Mode()) return true;
     if (selectedPosId !== o.pos.id) return false;
-    return o.tpVisible;
+    return o.tpVisible || o.tpSaved;
+  }
+
+  function isStopActive(o, kind) {
+    if (!isMt5Mode()) return false;
+    const dragging = drag && drag.id === o.pos.id && drag.kind === kind;
+    if (kind === "sl") return o.slVisible || o.slDirty || dragging;
+    return o.tpVisible || o.tpDirty || dragging;
+  }
+
+  function stopLineSolid(o, kind) {
+    if (!isMt5Mode()) {
+      return kind === "sl" ? o.slSaved && !o.slDirty : o.tpSaved && !o.tpDirty;
+    }
+    return isStopActive(o, kind);
   }
 
   function notifyTicket(o) {
@@ -205,7 +230,7 @@
     pendingOverlays.delete(id);
   }
 
-  function removeStopOverlay(o, kind) {
+  function destroyStopOverlay(o, kind) {
     if (kind === "sl") {
       try {
         if (o.slLine) series.removePriceLine(o.slLine);
@@ -215,7 +240,6 @@
       o.slLine = null;
       o.slRow?.remove();
       o.slRow = null;
-      o.slVisible = false;
     } else {
       try {
         if (o.tpLine) series.removePriceLine(o.tpLine);
@@ -225,8 +249,13 @@
       o.tpLine = null;
       o.tpRow?.remove();
       o.tpRow = null;
-      o.tpVisible = false;
     }
+  }
+
+  function removeStopOverlay(o, kind) {
+    destroyStopOverlay(o, kind);
+    if (kind === "sl") o.slVisible = false;
+    else o.tpVisible = false;
   }
 
   function removeOverlayDom(o) {
@@ -266,16 +295,29 @@
     return saved ? LC().LineStyle.Solid : LC().LineStyle.Dotted;
   }
 
-  function createLine(price, color, saved, axisColor, textColor) {
+  function createLine(price, color, solid, axisColor, textColor) {
     return series.createPriceLine({
       price,
       color,
       lineWidth: 1,
-      lineStyle: lineStyle(saved),
+      lineStyle: lineStyle(solid),
       axisLabelVisible: true,
       title: "",
       axisLabelColor: axisColor,
       axisLabelTextColor: textColor,
+    });
+  }
+
+  function createMt5EntryLine(price) {
+    return series.createPriceLine({
+      price,
+      color: "#d4d4d8",
+      lineWidth: 1,
+      lineStyle: LC().LineStyle.Dashed,
+      axisLabelVisible: true,
+      title: "",
+      axisLabelColor: "#52525b",
+      axisLabelTextColor: "#fafafa",
     });
   }
 
@@ -292,8 +334,7 @@
     row.dataset.posId = String(pos.id);
 
     if (mt5) {
-      row.innerHTML = `<span class="cpf-entry-label cpf-entry-label--${isBuy ? "buy" : "sell"}">${side} ${pos.volume}</span>`;
-      row.style.pointerEvents = "auto";
+      row.innerHTML = `<span class="cpf-mt5-text cpf-mt5-text--entry">${side} ${pos.volume}</span>`;
       row.addEventListener("click", (e) => {
         e.stopPropagation();
         selectPosition(pos.id);
@@ -318,19 +359,38 @@
     return row;
   }
 
-  function buildTag(kind, pos, levelPrice, saved) {
+  function buildTag(kind, pos, levelPrice, active) {
     const row = document.createElement("div");
-    row.className = `cpf-pos-row cpf-pos-row--${kind}${saved ? "" : " is-draft"}`;
+    row.className = `cpf-pos-row cpf-pos-row--${kind}${active ? " is-active" : ""}`;
     row.dataset.posId = String(pos.id);
     row.dataset.kind = kind;
+
+    if (isMt5Mode()) {
+      const pnl = pnlAtPrice(pos, levelPrice);
+      const label = active
+        ? `${kind.toUpperCase()}, ${fmtTagPnl(pnl)}`
+        : kind.toUpperCase();
+      row.innerHTML = `
+        <span class="cpf-mt5-text cpf-mt5-text--${kind}">
+          <span class="cpf-mt5-text-main">${label}</span>
+          ${active ? `<button type="button" class="cpf-tag-cancel" data-cancel-stop="${kind}" aria-label="Remove ${kind.toUpperCase()}">×</button>` : ""}
+        </span>`;
+      row.querySelector("[data-cancel-stop]")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const o = overlays.get(pos.id);
+        if (o) cancelStop(o, kind);
+      });
+      return row;
+    }
+
     const pnl = pnlAtPrice(pos, levelPrice);
     const pnlCls = tagPnlClass(pnl);
-    const showCancel = isMt5Mode() || !saved;
+    const saved = !active;
     row.innerHTML = `
       <span class="cpf-pos-tag cpf-pos-tag--${kind}">
         <span class="cpf-pos-tag-label">${kind.toUpperCase()}</span>
         <span class="cpf-pos-tag-pnl ${pnlCls}">${fmtTagPnl(pnl)}</span>
-        ${showCancel ? `<button type="button" class="cpf-tag-cancel" data-cancel-stop="${kind}" aria-label="Remove ${kind.toUpperCase()}">×</button>` : ""}
+        ${!saved ? `<button type="button" class="cpf-tag-cancel" data-cancel-stop="${kind}" aria-label="Remove ${kind.toUpperCase()}">×</button>` : ""}
       </span>
     `;
     row.querySelector("[data-cancel-stop]")?.addEventListener("click", (e) => {
@@ -341,20 +401,48 @@
     return row;
   }
 
+  function rebuildStopRow(o, kind) {
+    const isSl = kind === "sl";
+    const active = isStopActive(o, kind);
+    const price = isSl ? o.slVal : o.tpVal;
+    const saved = isSl ? o.slSaved : o.tpSaved;
+    if (isSl) {
+      o.slRow?.remove();
+      o.slRow = buildTag("sl", o.pos, price, active);
+      overlayRoot?.appendChild(o.slRow);
+    } else {
+      o.tpRow?.remove();
+      o.tpRow = buildTag("tp", o.pos, price, active);
+      overlayRoot?.appendChild(o.tpRow);
+    }
+    return active;
+  }
+
   function ensureStopOverlay(o, kind) {
     const isSl = kind === "sl";
+    const active = isStopActive(o, kind);
+    const solid = stopLineSolid(o, kind);
+    const price = isSl ? o.slVal : o.tpVal;
 
     if (isSl) {
       if (!o.slLine) {
-        o.slLine = createLine(o.slVal, COLORS.sl, o.slSaved && !o.slDirty, COLORS.slAxis, COLORS.slText);
-        o.slRow = buildTag("sl", o.pos, o.slVal, o.slSaved && !o.slDirty);
+        o.slLine = createLine(price, COLORS.sl, solid, COLORS.slAxis, COLORS.slText);
+        o.slRow = buildTag("sl", o.pos, price, active);
         overlayRoot?.appendChild(o.slRow);
+      } else {
+        const prevActive = o.slRow?.classList.contains("is-active");
+        if (prevActive !== active) rebuildStopRow(o, "sl");
+        o.slLine.applyOptions({ price, lineStyle: lineStyle(solid) });
       }
     } else {
       if (!o.tpLine) {
-        o.tpLine = createLine(o.tpVal, COLORS.tp, o.tpSaved && !o.tpDirty, COLORS.tpAxis, COLORS.tpText);
-        o.tpRow = buildTag("tp", o.pos, o.tpVal, o.tpSaved && !o.tpDirty);
+        o.tpLine = createLine(price, COLORS.tp, solid, COLORS.tpAxis, COLORS.tpText);
+        o.tpRow = buildTag("tp", o.pos, price, active);
         overlayRoot?.appendChild(o.tpRow);
+      } else {
+        const prevActive = o.tpRow?.classList.contains("is-active");
+        if (prevActive !== active) rebuildStopRow(o, "tp");
+        o.tpLine.applyOptions({ price, lineStyle: lineStyle(solid) });
       }
     }
   }
@@ -362,27 +450,21 @@
   function refreshStopVisibility(o) {
     if (shouldShowSl(o)) {
       ensureStopOverlay(o, "sl");
-      const solid = o.slSaved && !o.slDirty;
-      o.slRow?.classList.toggle("is-draft", !solid);
-      o.slLine?.applyOptions({ price: o.slVal, lineStyle: lineStyle(solid) });
     } else {
-      removeStopOverlay(o, "sl");
+      destroyStopOverlay(o, "sl");
     }
 
     if (shouldShowTp(o)) {
       ensureStopOverlay(o, "tp");
-      const solid = o.tpSaved && !o.tpDirty;
-      o.tpRow?.classList.toggle("is-draft", !solid);
-      o.tpLine?.applyOptions({ price: o.tpVal, lineStyle: lineStyle(solid) });
     } else {
-      removeStopOverlay(o, "tp");
+      destroyStopOverlay(o, "tp");
     }
   }
 
   function layoutOverlay(o) {
     const entryY = priceY(Number(o.pos.entry));
     if (entryY != null && o.entryRow) {
-      o.entryRow.style.top = `${entryY}px`;
+      o.entryRow.style.transform = `translateY(${entryY}px)`;
       o.entryRow.style.display = "";
       o.entryRow.classList.toggle("is-selected", selectedPosId === o.pos.id);
     } else if (o.entryRow) {
@@ -391,7 +473,7 @@
 
     const slY = shouldShowSl(o) ? priceY(o.slVal) : null;
     if (slY != null && o.slRow) {
-      o.slRow.style.top = `${slY}px`;
+      o.slRow.style.transform = `translateY(${slY}px)`;
       o.slRow.style.display = "";
     } else if (o.slRow) {
       o.slRow.style.display = "none";
@@ -399,7 +481,7 @@
 
     const tpY = shouldShowTp(o) ? priceY(o.tpVal) : null;
     if (tpY != null && o.tpRow) {
-      o.tpRow.style.top = `${tpY}px`;
+      o.tpRow.style.transform = `translateY(${tpY}px)`;
       o.tpRow.style.display = "";
     } else if (o.tpRow) {
       o.tpRow.style.display = "none";
@@ -438,8 +520,14 @@
   function hideAllStops(o) {
     o.slVisible = false;
     o.tpVisible = false;
-    removeStopOverlay(o, "sl");
-    removeStopOverlay(o, "tp");
+    destroyStopOverlay(o, "sl");
+    destroyStopOverlay(o, "tp");
+  }
+
+  function showSavedStops(o) {
+    o.slVisible = false;
+    o.tpVisible = false;
+    refreshStopVisibility(o);
   }
 
   function setSliderPane(pane, animate = true) {
@@ -551,7 +639,7 @@
     }
 
     resetOverlayEditState(o);
-    hideAllStops(o);
+    showSavedStops(o);
     layoutOverlay(o);
     updateMt5PosBar(o.pos);
     notifyTicket(o);
@@ -591,18 +679,24 @@
     layoutOverlay(o);
   }
 
+  function deactivateStopEditor(o, kind) {
+    if (kind === "sl") o.slVisible = false;
+    else o.tpVisible = false;
+    refreshStopVisibility(o);
+    layoutOverlay(o);
+  }
+
   function showStopEditor(kind) {
     if (!selectedPosId) return;
     if (barMode === "close-only") barMode = "full";
     const o = overlays.get(selectedPosId);
     if (!o) return;
     const isSl = kind === "sl";
-    const visible = isSl ? o.slVisible : o.tpVisible;
-    if (!visible) {
-      showStopLine(o, kind);
+    const editing = isSl ? o.slVisible : o.tpVisible;
+    if (editing) {
+      deactivateStopEditor(o, kind);
     } else {
-      refreshStopVisibility(o);
-      layoutOverlay(o);
+      showStopLine(o, kind);
     }
     updateMt5PosBar(o.pos);
     notifyTicket(o);
@@ -644,8 +738,9 @@
         if (row) row.sl = o.slVal;
         o.slBaseline = o.slVal;
         o.slDirty = false;
-        o.slLine?.applyOptions({ lineStyle: LC().LineStyle.Solid });
-        o.slRow?.classList.remove("is-draft");
+        o.slVisible = false;
+        o.slLine?.applyOptions({ lineStyle: LC().LineStyle.Dotted });
+        rebuildStopRow(o, "sl");
       }
       if (saveTp) {
         o.tpSaved = true;
@@ -653,8 +748,9 @@
         if (row) row.tp = o.tpVal;
         o.tpBaseline = o.tpVal;
         o.tpDirty = false;
-        o.tpLine?.applyOptions({ lineStyle: LC().LineStyle.Solid });
-        o.tpRow?.classList.remove("is-draft");
+        o.tpVisible = false;
+        o.tpLine?.applyOptions({ lineStyle: LC().LineStyle.Dotted });
+        rebuildStopRow(o, "tp");
       }
       barMode = "full";
       setSliderPane("close");
@@ -745,7 +841,9 @@
     const tpSaved = hasTp(pos);
     const mt5 = isMt5Mode();
 
-    const entryLine = createLine(entry, COLORS.entry, true, COLORS.entryAxis, COLORS.entryText);
+    const entryLine = isMt5Mode()
+      ? createMt5EntryLine(entry)
+      : createLine(entry, COLORS.entry, true, COLORS.entryAxis, COLORS.entryText);
     const entryRow = buildEntryPill(pos);
     overlayRoot.append(entryRow);
 
@@ -785,8 +883,8 @@
     if (!mt5) {
       record.slLine = createLine(record.slVal, COLORS.sl, slSaved, COLORS.slAxis, COLORS.slText);
       record.tpLine = createLine(record.tpVal, COLORS.tp, tpSaved, COLORS.tpAxis, COLORS.tpText);
-      record.slRow = buildTag("sl", pos, record.slVal, slSaved);
-      record.tpRow = buildTag("tp", pos, record.tpVal, tpSaved);
+      record.slRow = buildTag("sl", pos, record.slVal, true);
+      record.tpRow = buildTag("tp", pos, record.tpVal, true);
       overlayRoot.append(record.slRow, record.tpRow);
     } else if (prevState && (prevState.selected || selectedPosId === pos.id)) {
       if (prevState.selected) selectedPosId = pos.id;
@@ -905,14 +1003,14 @@
     const exact = Number(price);
     if (kind === "sl") {
       o.slVal = exact;
-      const solid = !isMt5Mode() && o.slSaved && !o.slDirty;
+      const solid = stopLineSolid(o, "sl");
       o.slLine?.applyOptions({ price: exact, lineStyle: lineStyle(solid) });
-      o.slRow?.classList.toggle("is-draft", !solid);
+      rebuildStopRow(o, "sl");
     } else {
       o.tpVal = exact;
-      const solid = !isMt5Mode() && o.tpSaved && !o.tpDirty;
+      const solid = stopLineSolid(o, "tp");
       o.tpLine?.applyOptions({ price: exact, lineStyle: lineStyle(solid) });
-      o.tpRow?.classList.toggle("is-draft", !solid);
+      rebuildStopRow(o, "tp");
     }
     layoutOverlay(o);
     notifyTicket(o);
@@ -1071,6 +1169,13 @@
       /* ignore */
     }
     if (moved && !isMt5Mode()) persistStops(id, kind);
+    else if (moved && isMt5Mode()) {
+      const o = overlays.get(id);
+      if (o) {
+        refreshStopVisibility(o);
+        layoutOverlay(o);
+      }
+    }
   }
 
   function bindMt5Slider() {
