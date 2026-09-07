@@ -31,6 +31,8 @@
   let dragHost = null;
   let selectedPosId = null;
   let mt5BarBound = false;
+  /** @type {'full' | 'close-only' | 'modify'} */
+  let barMode = "full";
 
   function ctx() {
     return getContext?.() || {};
@@ -402,6 +404,31 @@
     chart.timeScale().subscribeVisibleLogicalRangeChange(() => layoutAll());
   }
 
+  function priceChanged(a, b, symbol) {
+    const digits = ctx().symbolMeta?.[symbol]?.digits ?? 5;
+    const eps = 10 ** -digits;
+    return Math.abs(Number(a) - Number(b)) > eps;
+  }
+
+  function overlayDirty(o) {
+    return !!(o?.slDirty || o?.tpDirty);
+  }
+
+  function resetOverlayEditState(o) {
+    if (!o) return;
+    o.slDirty = false;
+    o.tpDirty = false;
+    o.slBaseline = o.slSaved ? Number(o.pos.sl) : null;
+    o.tpBaseline = o.tpSaved ? Number(o.pos.tp) : null;
+  }
+
+  function hideAllStops(o) {
+    o.slVisible = false;
+    o.tpVisible = false;
+    removeStopOverlay(o, "sl");
+    removeStopOverlay(o, "tp");
+  }
+
   function updateMt5PosBar(pos) {
     const bar = document.getElementById("mt5-pos-bar");
     if (!bar) return;
@@ -409,43 +436,92 @@
       bar.hidden = true;
       bar.setAttribute("aria-hidden", "true");
       document.body.classList.remove("mt5-pos-active");
+      barMode = "full";
       return;
     }
     bar.hidden = false;
     bar.setAttribute("aria-hidden", "false");
     document.body.classList.add("mt5-pos-active");
+
+    const o = overlays.get(pos.id);
     const side = sideLabel(pos).toLowerCase();
+    const primary = document.getElementById("mt5-pos-close");
     const text = document.getElementById("mt5-pos-close-text");
     const vol = document.getElementById("mt5-pos-close-vol");
+    const stops = document.getElementById("mt5-pos-stops");
+    const dismiss = document.getElementById("mt5-pos-bar-dismiss");
     const slBtn = document.getElementById("mt5-pos-sl");
     const tpBtn = document.getElementById("mt5-pos-tp");
-    if (text) text.textContent = `Close ${side}`;
-    if (vol) vol.textContent = String(pos.volume);
-    const o = overlays.get(pos.id);
+
+    const mode = overlayDirty(o) ? "modify" : barMode;
+    bar.classList.toggle("is-modify", mode === "modify");
+    bar.classList.toggle("is-close-only", mode === "close-only");
+
+    if (mode === "modify") {
+      if (text) text.textContent = "Modify position";
+      if (vol) vol.hidden = true;
+      if (stops) stops.hidden = true;
+      if (dismiss) dismiss.hidden = false;
+    } else if (mode === "close-only") {
+      if (text) text.textContent = `Close ${side}`;
+      if (vol) {
+        vol.textContent = String(pos.volume);
+        vol.hidden = false;
+      }
+      if (stops) stops.hidden = true;
+      if (dismiss) dismiss.hidden = true;
+    } else {
+      if (text) text.textContent = `Close ${side}`;
+      if (vol) {
+        vol.textContent = String(pos.volume);
+        vol.hidden = false;
+      }
+      if (stops) stops.hidden = false;
+      if (dismiss) dismiss.hidden = false;
+    }
+
+    primary?.classList.toggle("is-modify", mode === "modify");
     slBtn?.classList.toggle("is-active", !!o?.slVisible);
     tpBtn?.classList.toggle("is-active", !!o?.tpVisible);
   }
 
   function selectPosition(id) {
     if (!isMt5Mode()) return;
+
+    if (selectedPosId === id) {
+      const o = overlays.get(id);
+      if (!o) return;
+      if (overlayDirty(o)) {
+        barMode = "modify";
+      } else if (barMode === "close-only") {
+        barMode = "full";
+      } else {
+        barMode = "close-only";
+        hideAllStops(o);
+      }
+      layoutOverlay(o);
+      updateMt5PosBar(o.pos);
+      notifyTicket(o);
+      return;
+    }
+
     const prev = selectedPosId;
     selectedPosId = id;
+    barMode = "full";
     const o = overlays.get(id);
     if (!o) return;
 
     if (prev && prev !== id) {
       const prevO = overlays.get(prev);
       if (prevO) {
-        if (!prevO.slSaved) prevO.slVisible = false;
-        if (!prevO.tpSaved) prevO.tpVisible = false;
-        refreshStopVisibility(prevO);
+        hideAllStops(prevO);
+        resetOverlayEditState(prevO);
         layoutOverlay(prevO);
       }
     }
 
-    if (o.slSaved) o.slVisible = true;
-    if (o.tpSaved) o.tpVisible = true;
-    refreshStopVisibility(o);
+    resetOverlayEditState(o);
+    hideAllStops(o);
     layoutOverlay(o);
     updateMt5PosBar(o.pos);
     notifyTicket(o);
@@ -455,28 +531,113 @@
     if (!selectedPosId) return;
     const o = overlays.get(selectedPosId);
     if (o) {
-      o.slVisible = false;
-      o.tpVisible = false;
-      removeStopOverlay(o, "sl");
-      removeStopOverlay(o, "tp");
+      hideAllStops(o);
+      resetOverlayEditState(o);
       o.entryRow?.classList.remove("is-selected");
       layoutOverlay(o);
     }
     selectedPosId = null;
+    barMode = "full";
     if (clearBar) updateMt5PosBar(null);
     ctx().syncTicketStops?.({ sl: null, tp: null, slSaved: false, tpSaved: false, dragging: false });
   }
 
   function showStopEditor(kind) {
-    if (!selectedPosId) return;
+    if (!selectedPosId || barMode === "close-only") return;
     const o = overlays.get(selectedPosId);
     if (!o) return;
-    if (kind === "sl") o.slVisible = true;
-    else o.tpVisible = true;
-    refreshStopVisibility(o);
+
+    const isSl = kind === "sl";
+    const visible = isSl ? o.slVisible : o.tpVisible;
+    const dirty = isSl ? o.slDirty : o.tpDirty;
+
+    if (visible && !dirty) {
+      if (isSl) {
+        o.slVisible = false;
+        removeStopOverlay(o, "sl");
+      } else {
+        o.tpVisible = false;
+        removeStopOverlay(o, "tp");
+      }
+      if (!o.slVisible && !o.tpVisible && !overlayDirty(o)) {
+        barMode = "close-only";
+      }
+    } else if (!visible) {
+      if (isSl) {
+        o.slVal = o.slSaved ? Number(o.pos.sl) : defaultSl(o.pos);
+        o.slBaseline = o.slVal;
+        o.slDirty = false;
+        o.slVisible = true;
+      } else {
+        o.tpVal = o.tpSaved ? Number(o.pos.tp) : defaultTp(o.pos);
+        o.tpBaseline = o.tpVal;
+        o.tpDirty = false;
+        o.tpVisible = true;
+      }
+      barMode = "full";
+      refreshStopVisibility(o);
+    }
+
     layoutOverlay(o);
     updateMt5PosBar(o.pos);
     notifyTicket(o);
+  }
+
+  function markStopDirty(o, kind) {
+    if (kind === "sl") {
+      o.slDirty = priceChanged(o.slVal, o.slBaseline, o.pos.symbol);
+    } else {
+      o.tpDirty = priceChanged(o.tpVal, o.tpBaseline, o.pos.symbol);
+    }
+    if (overlayDirty(o)) barMode = "modify";
+    updateMt5PosBar(o.pos);
+  }
+
+  async function modifyPosition() {
+    const o = overlays.get(selectedPosId);
+    const accountId = ctx().accountId;
+    if (!o || !accountId || !window.AlphaFXApi) return;
+
+    const body = { account_id: accountId };
+    if (o.slDirty) body.stop_loss = o.slVal;
+    if (o.tpDirty) body.take_profit = o.tpVal;
+    if (!("stop_loss" in body) && !("take_profit" in body)) return;
+
+    const saveSl = o.slDirty;
+    const saveTp = o.tpDirty;
+
+    try {
+      await window.AlphaFXApi.request(`/api/v1/trade/positions/${selectedPosId}/stops`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      const open = ctx().open || [];
+      const row = open.find((p) => p.id === selectedPosId);
+      if (saveSl) {
+        o.slSaved = true;
+        o.pos.sl = o.slVal;
+        if (row) row.sl = o.slVal;
+        o.slBaseline = o.slVal;
+        o.slDirty = false;
+        o.slLine?.applyOptions({ lineStyle: LC().LineStyle.Solid });
+        o.slRow?.classList.remove("is-draft");
+      }
+      if (saveTp) {
+        o.tpSaved = true;
+        o.pos.tp = o.tpVal;
+        if (row) row.tp = o.tpVal;
+        o.tpBaseline = o.tpVal;
+        o.tpDirty = false;
+        o.tpLine?.applyOptions({ lineStyle: LC().LineStyle.Solid });
+        o.tpRow?.classList.remove("is-draft");
+      }
+      barMode = "full";
+      window.AlphaFXToast?.show("Position modified", "success");
+      updateMt5PosBar(o.pos);
+      notifyTicket(o);
+    } catch (e) {
+      window.AlphaFXToast?.show(e?.message || "Could not modify position", "error");
+    }
   }
 
   async function cancelStop(o, kind) {
@@ -496,8 +657,17 @@
         const open = ctx().open || [];
         const row = open.find((p) => p.id === o.pos.id);
         if (row) row.tp = null;
+      } else if (isSl) {
+        o.slVal = o.slBaseline ?? defaultSl(o.pos);
+        o.slDirty = false;
+      } else {
+        o.tpVal = o.tpBaseline ?? defaultTp(o.pos);
+        o.tpDirty = false;
       }
       removeStopOverlay(o, kind);
+      if (!overlayDirty(o) && !o.slVisible && !o.tpVisible) {
+        barMode = barMode === "modify" ? "full" : barMode;
+      }
       layoutOverlay(o);
       updateMt5PosBar(o.pos);
       notifyTicket(o);
@@ -524,7 +694,15 @@
 
     const prev = overlays.get(pos.id);
     const prevState = prev
-      ? { slVisible: prev.slVisible, tpVisible: prev.tpVisible, selected: selectedPosId === pos.id }
+      ? {
+          slVisible: prev.slVisible,
+          tpVisible: prev.tpVisible,
+          slDirty: prev.slDirty,
+          tpDirty: prev.tpDirty,
+          slBaseline: prev.slBaseline,
+          tpBaseline: prev.tpBaseline,
+          selected: selectedPosId === pos.id,
+        }
       : null;
 
     stripOverlay(pos.id);
@@ -549,6 +727,10 @@
       tpSaved,
       slVisible: mt5 ? false : true,
       tpVisible: mt5 ? false : true,
+      slDirty: false,
+      tpDirty: false,
+      slBaseline: slSaved ? Number(pos.sl) : null,
+      tpBaseline: tpSaved ? Number(pos.tp) : null,
       entryRow,
       slRow: null,
       tpRow: null,
@@ -557,6 +739,10 @@
     if (prevState) {
       record.slVisible = prevState.slVisible;
       record.tpVisible = prevState.tpVisible;
+      record.slDirty = prevState.slDirty;
+      record.tpDirty = prevState.tpDirty;
+      record.slBaseline = prevState.slBaseline;
+      record.tpBaseline = prevState.tpBaseline;
     }
 
     overlays.set(pos.id, record);
@@ -569,8 +755,6 @@
       overlayRoot.append(record.slRow, record.tpRow);
     } else if (prevState?.selected) {
       selectedPosId = pos.id;
-      if (slSaved) record.slVisible = true;
-      if (tpSaved) record.tpVisible = true;
       refreshStopVisibility(record);
       updateMt5PosBar(pos);
     }
@@ -600,9 +784,17 @@
 
   function sync() {
     const prevSelected = selectedPosId;
+    const prevBarMode = barMode;
     const prevVis = new Map();
     for (const [id, o] of overlays) {
-      prevVis.set(id, { slVisible: o.slVisible, tpVisible: o.tpVisible });
+      prevVis.set(id, {
+        slVisible: o.slVisible,
+        tpVisible: o.tpVisible,
+        slDirty: o.slDirty,
+        tpDirty: o.tpDirty,
+        slBaseline: o.slBaseline,
+        tpBaseline: o.tpBaseline,
+      });
     }
 
     for (const id of [...overlays.keys()]) {
@@ -628,13 +820,18 @@
     const pendingOrders = pending.filter((p) => p.symbol === activeSymbol);
 
     selectedPosId = prevSelected;
+    barMode = prevBarMode;
     positions.forEach((pos) => {
       upsertOverlay(pos);
       const vis = prevVis.get(pos.id);
       const o = overlays.get(pos.id);
       if (o && vis && isMt5Mode() && selectedPosId === pos.id) {
-        o.slVisible = vis.slVisible || o.slSaved;
-        o.tpVisible = vis.tpVisible || o.tpSaved;
+        o.slVisible = vis.slVisible;
+        o.tpVisible = vis.tpVisible;
+        o.slDirty = vis.slDirty;
+        o.tpDirty = vis.tpDirty;
+        o.slBaseline = vis.slBaseline;
+        o.tpBaseline = vis.tpBaseline;
         refreshStopVisibility(o);
         layoutOverlay(o);
       }
@@ -678,12 +875,14 @@
     const exact = Number(price);
     if (kind === "sl") {
       o.slVal = exact;
-      o.slLine?.applyOptions({ price: exact, lineStyle: LC().LineStyle.Solid });
-      o.slRow?.classList.remove("is-draft");
+      const solid = !isMt5Mode() && o.slSaved && !o.slDirty;
+      o.slLine?.applyOptions({ price: exact, lineStyle: lineStyle(solid) });
+      o.slRow?.classList.toggle("is-draft", !solid);
     } else {
       o.tpVal = exact;
-      o.tpLine?.applyOptions({ price: exact, lineStyle: LC().LineStyle.Solid });
-      o.tpRow?.classList.remove("is-draft");
+      const solid = !isMt5Mode() && o.tpSaved && !o.tpDirty;
+      o.tpLine?.applyOptions({ price: exact, lineStyle: lineStyle(solid) });
+      o.tpRow?.classList.toggle("is-draft", !solid);
     }
     layoutOverlay(o);
     notifyTicket(o);
@@ -805,6 +1004,7 @@
     }
     drag.moved = true;
     applyDragPrice(drag.kind, price);
+    if (isMt5Mode()) markStopDirty(o, drag.kind);
   }
 
   function onPointerUp(ev) {
@@ -820,7 +1020,7 @@
     } catch {
       /* ignore */
     }
-    if (moved) persistStops(id, kind);
+    if (moved && !isMt5Mode()) persistStops(id, kind);
   }
 
   function bindMt5PosBar() {
@@ -829,6 +1029,11 @@
 
     document.getElementById("mt5-pos-close")?.addEventListener("click", () => {
       if (!selectedPosId) return;
+      const o = overlays.get(selectedPosId);
+      if (overlayDirty(o) || barMode === "modify") {
+        modifyPosition();
+        return;
+      }
       ctx().closePosition?.(selectedPosId);
       deselectPosition();
     });

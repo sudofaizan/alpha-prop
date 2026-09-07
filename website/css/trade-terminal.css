@@ -1336,7 +1336,7 @@ body[data-page="trade"] .dashboard-main {
     display: none !important;
   }
 
-  .mt5-pos-close {
+  .mt5-pos-primary {
     flex: 1 1 auto;
     display: inline-flex;
     align-items: center;
@@ -1351,10 +1351,35 @@ body[data-page="trade"] .dashboard-main {
     font-weight: 700;
     cursor: pointer;
     box-shadow: 0 2px 10px rgba(249, 115, 22, 0.35);
+    transition: background 0.18s ease, transform 0.12s ease;
   }
 
-  .mt5-pos-close:active {
+  .mt5-pos-primary.is-modify {
+    background: linear-gradient(180deg, #3b82f6, #2563eb);
+    box-shadow: 0 2px 10px rgba(37, 99, 235, 0.35);
+  }
+
+  .mt5-pos-primary:active {
     transform: scale(0.98);
+  }
+
+  .mt5-pos-stops {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  .mt5-pos-stops[hidden] {
+    display: none !important;
+  }
+
+  .mt5-pos-bar.is-close-only {
+    justify-content: center;
+  }
+
+  .mt5-pos-bar.is-close-only .mt5-pos-primary {
+    max-width: 100%;
   }
 
   .mt5-pos-close-icon {
