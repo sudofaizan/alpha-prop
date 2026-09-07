@@ -37,6 +37,12 @@ wait_for_url() {
     sleep 1
     i=$((i + 1))
   done
+  echo ""
+  echo "── ${SERVICE_NAME} systemd status ──"
+  sudo systemctl status "${SERVICE_NAME}" --no-pager -l 2>/dev/null || true
+  echo ""
+  echo "── ${SERVICE_NAME} recent logs ──"
+  sudo journalctl -u "${SERVICE_NAME}" -n 40 --no-pager 2>/dev/null || true
   die "${label} health check failed (${url})"
 }
 
@@ -142,6 +148,11 @@ fi
 source .venv/bin/activate
 pip install -q --upgrade pip
 pip install -q -r requirements.txt
+
+log "Verifying backend imports…"
+if ! python -c "from app.main import app; from app.seed import init_db; init_db()"; then
+  die "Backend import/startup failed — fix Python errors above before continuing"
+fi
 
 # Tick hub: mock off by default when MT5 EA feeds TCP :9001
 TICK_HUB_MOCK="${ALPHAFX_TICK_HUB_MOCK:-0}"

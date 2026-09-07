@@ -92,6 +92,15 @@ class AccountsListResponse(BaseModel):
     counts: dict[str, int]
 
 
+class RiskWarningOut(BaseModel):
+    kind: str
+    title: str
+    subtitle: str
+    rule_label: str | None = None
+    strike_count: int = 0
+    strike_limit: int = 2
+
+
 class DashboardResponse(BaseModel):
     has_accounts: bool
     primary_account: AccountSummary | None = None
@@ -101,7 +110,7 @@ class DashboardResponse(BaseModel):
     strike_count: int = 0
     strike_limit: int = 2
     is_breached: bool = False
-    risk_warnings: list["RiskWarningOut"] = []
+    risk_warnings: list[RiskWarningOut] = []
 
 
 class StrikeOut(BaseModel):
@@ -109,15 +118,6 @@ class StrikeOut(BaseModel):
     rule_label: str
     reason: str
     created_at: str
-
-
-class RiskWarningOut(BaseModel):
-    kind: str
-    title: str
-    subtitle: str
-    rule_label: str | None = None
-    strike_count: int = 0
-    strike_limit: int = 2
 
 
 class AddStrikeRequest(BaseModel):
