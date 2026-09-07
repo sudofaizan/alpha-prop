@@ -323,6 +323,10 @@ server {
         add_header Cache-Control "no-cache, must-revalidate" always;
     }
 
+    location = /js/api.js {
+        add_header Cache-Control "no-cache, must-revalidate" always;
+    }
+
     location / {
         try_files \$uri \$uri/ =404;
     }

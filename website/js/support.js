@@ -52,6 +52,9 @@
   }
 
   async function loadTickets() {
+    if (!window.AlphaFXApi?.listSupportTickets) {
+      throw new Error("Support API not loaded — hard refresh the page (Ctrl+Shift+R).");
+    }
     const data = await window.AlphaFXApi.listSupportTickets();
     tickets = data.items || [];
   }
