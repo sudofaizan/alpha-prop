@@ -4,6 +4,8 @@
 (function () {
   const STORAGE_TABS = "alphafx_trade_tabs";
   const STORAGE_TF = "alphafx_trade_tf";
+  const STORAGE_SYMBOL = "alphafx_trade_symbol";
+  const STORAGE_ACCOUNT = "alphafx_trade_account";
   const DEFAULT_SYMBOL = "BTCUSD";
   const DEFAULT_TABS = ["XAUUSD", "BTCUSD"];
   const DEFAULT_TIMEFRAME = "M1";
@@ -284,6 +286,40 @@
     try {
       const saved = localStorage.getItem(STORAGE_TF);
       if (saved && TIMEFRAMES.some((t) => t.id === saved)) activeTimeframe = saved;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function loadSymbolPref() {
+    try {
+      const saved = localStorage.getItem(STORAGE_SYMBOL);
+      if (saved) activeSymbol = String(saved);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function saveSymbolPref() {
+    try {
+      localStorage.setItem(STORAGE_SYMBOL, activeSymbol);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function loadAccountPref() {
+    try {
+      const saved = localStorage.getItem(STORAGE_ACCOUNT);
+      if (saved) accountId = Number(saved) || null;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function saveAccountPref() {
+    try {
+      if (accountId) localStorage.setItem(STORAGE_ACCOUNT, String(accountId));
     } catch {
       /* ignore */
     }
@@ -814,6 +850,7 @@
       .join("");
     sel.onchange = () => {
       accountId = Number(sel.value) || null;
+      saveAccountPref();
       loadTradeSnapshot();
     };
   }
@@ -824,6 +861,7 @@
       tradeSnapshot = await window.AlphaFXApi.request(`/api/v1/trade/snapshot${q}`);
       if (tradeSnapshot.account) {
         accountId = tradeSnapshot.account.id;
+        saveAccountPref();
         mapAccountMetrics(tradeSnapshot.account);
       }
       notifyStopHits(tradeSnapshot.stop_hits);
@@ -974,6 +1012,7 @@
 
   async function selectSymbol(symbol) {
     activeSymbol = symbol;
+    saveSymbolPref();
     openTab(symbol);
     renderSymbolTabs();
     document.querySelectorAll(".trade-watchlist-row").forEach((row) => {
@@ -1110,6 +1149,8 @@
     bindOrderTypeTabs();
     updateOrderTicketUI();
     loadTimeframePref();
+    loadSymbolPref();
+    loadAccountPref();
     renderTimeframes();
     bindTimeframes();
     document.getElementById("pt-sidebar-toggle")?.addEventListener("click", () => {
@@ -1126,7 +1167,11 @@
     window.AlphaFXQuotes.connect(allSymbols);
     window.addEventListener("alphafx:quotes:status", (e) => setLiveStatus(e.detail?.live));
 
-    const startSym = openTabs.includes(activeSymbol) ? activeSymbol : openTabs[0] || DEFAULT_SYMBOL;
+    let startSym = activeSymbol;
+    if (!allSymbols.includes(startSym)) {
+      startSym = openTabs.find((s) => allSymbols.includes(s)) || allSymbols[0] || DEFAULT_SYMBOL;
+      activeSymbol = startSym;
+    }
     await waitForQuote(startSym, 5000);
     await selectSymbol(startSym);
 

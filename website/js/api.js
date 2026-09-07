@@ -90,6 +90,16 @@
     getNotifications: () => request("/api/v1/notifications"),
     getUnreadCount: () => request("/api/v1/notifications/unread-count"),
     markAllNotificationsRead: () => request("/api/v1/notifications/read-all", { method: "POST" }),
+    listSupportTickets: () => request("/api/v1/support/tickets"),
+    createSupportTicket: (body) => request("/api/v1/support/tickets", { method: "POST", body: JSON.stringify(body) }),
+    getSupportTicket: (id) => request(`/api/v1/support/tickets/${id}`),
+    postSupportMessage: (id, body) =>
+      request(`/api/v1/support/tickets/${id}/messages`, { method: "POST", body: JSON.stringify({ body }) }),
+    adminSupportTickets: () => request("/api/v1/admin/support/tickets"),
+    adminSupportTicket: (id) => request(`/api/v1/admin/support/tickets/${id}`),
+    adminSupportReply: (id, body) =>
+      request(`/api/v1/admin/support/tickets/${id}/messages`, { method: "POST", body: JSON.stringify({ body }) }),
+    adminSupportClose: (id) => request(`/api/v1/admin/support/tickets/${id}/close`, { method: "POST" }),
     getTradeSnapshot: (accountId) =>
       request(`/api/v1/trade/snapshot${accountId ? `?account_id=${accountId}` : ""}`),
     getMarketSymbols: () => request("/api/v1/market/symbols"),

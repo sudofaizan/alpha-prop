@@ -42,6 +42,7 @@ const ADMIN_NAV = [
   { id: "admin-users", label: "Users", href: "admin.html#users", group: "Administration", icon: "accounts", tab: "users" },
   { id: "admin-accounts", label: "Accounts", href: "admin.html#accounts", group: "Administration", icon: "billing", tab: "accounts" },
   { id: "admin-orders", label: "Orders", href: "admin.html#orders", group: "Administration", icon: "billing", tab: "orders" },
+  { id: "admin-support", label: "Support", href: "admin.html#support", group: "Administration", icon: "support", tab: "support" },
 ];
 
 const ICONS = {

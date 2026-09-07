@@ -1,38 +1,38 @@
 /**
- * Support page — new ticket modal + local ticket list
+ * Support page — tickets + live chat with support team
  */
 (function () {
   if (document.body.dataset.page !== "support") return;
 
-  const STORAGE_KEY = "alphafx_support_tickets";
+  const POLL_MS = 3000;
   let tickets = [];
   let selectedId = null;
+  let thread = null;
+  let pollTimer = null;
+  let sending = false;
 
   const els = {};
 
-  function loadTickets() {
-    try {
-      tickets = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    } catch {
-      tickets = [];
-    }
+  function parseWhen(iso) {
+    const d = window.AlphaFXTime ? window.AlphaFXTime.parseUtc(iso) : new Date(iso);
+    if (!d || Number.isNaN(d.getTime())) return "";
+    return d.toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
   }
 
-  function saveTickets() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(tickets));
-  }
-
-  function formatWhen(iso) {
-    return new Date(iso).toLocaleString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  function timeAgo(iso) {
+    return window.AlphaFXTime ? window.AlphaFXTime.formatTimeAgo(iso) : parseWhen(iso);
   }
 
   function priorityLabel(value) {
     return value.charAt(0) + value.slice(1).toLowerCase();
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 
   function cacheElements() {
@@ -51,6 +51,11 @@
     els.closeBtns = document.querySelectorAll("[data-close-ticket-modal]");
   }
 
+  async function loadTickets() {
+    const data = await window.AlphaFXApi.listSupportTickets();
+    tickets = data.items || [];
+  }
+
   function renderList(filter = "") {
     if (!els.listBody) return;
     const q = filter.trim().toLowerCase();
@@ -64,26 +69,38 @@
     els.listBody.innerHTML = items
       .map(
         (t) => `
-      <button type="button" class="support-ticket-row${t.id === selectedId ? " is-active" : ""}" data-ticket-id="${t.id}">
+      <button type="button" class="support-ticket-row${t.id === selectedId ? " is-active" : ""}${t.needs_reply && t.status === "open" ? " needs-attention" : ""}" data-ticket-id="${t.id}">
         <div class="support-ticket-subject">${escapeHtml(t.subject)}</div>
-        <div class="support-ticket-meta">${priorityLabel(t.priority)} · ${formatWhen(t.created_at)}</div>
+        <div class="support-ticket-meta">${priorityLabel(t.priority)} · ${t.status} · ${timeAgo(t.last_message_at || t.created_at)}</div>
       </button>`
       )
       .join("");
 
     els.listBody.querySelectorAll("[data-ticket-id]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        selectedId = Number(btn.dataset.ticketId);
-        renderList(els.search?.value || "");
-        renderThread();
-      });
+      btn.addEventListener("click", () => selectTicket(Number(btn.dataset.ticketId)));
     });
   }
 
-  function renderThread() {
+  function renderMessages(messages) {
+    return (messages || [])
+      .map(
+        (m) => `
+      <div class="support-chat-bubble${m.is_staff ? " is-staff" : " is-user"}">
+        <div class="support-chat-meta">${m.is_staff ? "Support" : escapeHtml(m.sender_name || "You")} · ${parseWhen(m.created_at)}</div>
+        <div class="support-chat-text">${escapeHtml(m.body)}</div>
+      </div>`
+      )
+      .join("");
+  }
+
+  function scrollThreadToBottom() {
+    const box = els.thread?.querySelector(".support-chat-messages");
+    if (box) box.scrollTop = box.scrollHeight;
+  }
+
+  function renderThreadView() {
     if (!els.thread) return;
-    const ticket = tickets.find((t) => t.id === selectedId);
-    if (!ticket) {
+    if (!thread) {
       els.thread.innerHTML = `
         <div class="pt-empty">
           <div class="pt-empty-icon">
@@ -92,34 +109,107 @@
             </svg>
           </div>
           <div class="pt-empty-title">Select a conversation</div>
-          <p class="pt-empty-sub">Choose a ticket from the list to open the thread, or start a new conversation.</p>
+          <p class="pt-empty-sub">Choose a ticket from the list to chat with support, or start a new conversation.</p>
         </div>`;
       return;
     }
 
-    const files =
-      ticket.files?.length ?
-        `<div class="support-file-list">${ticket.files.map((f) => `<div class="support-file-item">${escapeHtml(f)}</div>`).join("")}</div>`
-      : "";
-
+    const closed = thread.status === "closed";
     els.thread.innerHTML = `
-      <div class="support-thread-view">
+      <div class="support-thread-view support-thread-view--chat">
         <div class="support-thread-head">
-          <h3>${escapeHtml(ticket.subject)}</h3>
-          <div class="support-ticket-meta">${priorityLabel(ticket.priority)} · Open · ${formatWhen(ticket.created_at)}</div>
+          <h3>${escapeHtml(thread.subject)}</h3>
+          <div class="support-ticket-meta">${priorityLabel(thread.priority)} · ${thread.status} · opened ${parseWhen(thread.created_at)}</div>
         </div>
-        <p class="support-thread-message">${escapeHtml(ticket.message)}</p>
-        ${files}
-        <p class="support-ticket-meta" style="margin-top:18px;">Our team will reply here once support messaging is connected to the backend.</p>
+        <div class="support-chat-messages" id="support-chat-messages">${renderMessages(thread.messages)}</div>
+        ${
+          closed
+            ? `<p class="support-ticket-meta support-chat-closed">This ticket is closed. Open a new ticket if you need more help.</p>`
+            : `<form class="support-chat-compose" id="support-reply-form">
+            <textarea class="dfx-textarea" id="support-reply-input" rows="2" placeholder="Type a message…" required minlength="1"></textarea>
+            <button type="submit" class="pt-btn pt-btn--primary" id="support-reply-btn">Send</button>
+          </form>`
+        }
       </div>`;
+
+    scrollThreadToBottom();
+
+    if (!closed) {
+      const form = document.getElementById("support-reply-form");
+      form?.addEventListener("submit", handleReply);
+    }
   }
 
-  function escapeHtml(str) {
-    return String(str)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
+  async function fetchThread(ticketId, { silent = false } = {}) {
+    if (!ticketId) return;
+    try {
+      const data = await window.AlphaFXApi.getSupportTicket(ticketId);
+      const prevLen = thread?.messages?.length || 0;
+      thread = data;
+      if (!silent || prevLen !== (data.messages?.length || 0)) {
+        renderThreadView();
+      } else {
+        const box = document.getElementById("support-chat-messages");
+        if (box) box.innerHTML = renderMessages(data.messages);
+        scrollThreadToBottom();
+      }
+    } catch (err) {
+      if (!silent) {
+        els.thread.innerHTML = `<div class="pt-card" style="padding:20px;color:var(--danger);">${escapeHtml(err.message || "Failed to load ticket")}</div>`;
+      }
+    }
+  }
+
+  async function selectTicket(id) {
+    selectedId = id;
+    thread = null;
+    renderList(els.search?.value || "");
+    renderThreadView();
+    els.thread.innerHTML = `<div style="padding:24px;color:var(--text-dim);">Loading conversation…</div>`;
+    await fetchThread(id);
+    startPolling();
+  }
+
+  async function handleReply(e) {
+    e.preventDefault();
+    if (sending || !selectedId) return;
+    const input = document.getElementById("support-reply-input");
+    const text = (input?.value || "").trim();
+    if (!text) return;
+    sending = true;
+    const btn = document.getElementById("support-reply-btn");
+    if (btn) btn.disabled = true;
+    try {
+      await window.AlphaFXApi.postSupportMessage(selectedId, text);
+      if (input) input.value = "";
+      await fetchThread(selectedId);
+      await loadTickets();
+      renderList(els.search?.value || "");
+    } catch (err) {
+      alert(err.message || "Send failed");
+    } finally {
+      sending = false;
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  function stopPolling() {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  function startPolling() {
+    stopPolling();
+    if (!selectedId) return;
+    pollTimer = setInterval(() => {
+      if (document.hidden) return;
+      fetchThread(selectedId, { silent: true }).catch(console.error);
+      loadTickets()
+        .then(() => renderList(els.search?.value || ""))
+        .catch(console.error);
+    }, POLL_MS);
   }
 
   function openModal() {
@@ -141,9 +231,7 @@
     if (!els.submitBtn) return;
     const subjectLen = (els.subject?.value || "").trim().length;
     const messageLen = (els.message?.value || "").trim().length;
-    const subjectOk = subjectLen >= 5;
-    const messageOk = messageLen >= 10;
-    const ready = subjectOk && messageOk;
+    const ready = subjectLen >= 5 && messageLen >= 10;
     els.submitBtn.disabled = !ready;
     if (ready) els.submitBtn.removeAttribute("aria-disabled");
     else els.submitBtn.setAttribute("aria-disabled", "true");
@@ -153,7 +241,7 @@
       if (ready) {
         hint.textContent = "";
         hint.hidden = true;
-      } else if (!subjectOk) {
+      } else if (subjectLen < 5) {
         hint.textContent = `Subject needs ${5 - subjectLen} more character${5 - subjectLen === 1 ? "" : "s"}.`;
         hint.hidden = false;
       } else {
@@ -178,41 +266,55 @@
     els.files?.addEventListener("change", () => {
       if (!els.fileList || !els.files) return;
       const names = [...els.files.files].slice(0, 3).map((f) => f.name);
-      els.fileList.innerHTML = names.map((n) => `<div class="support-file-item">${escapeHtml(n)}</div>`).join("");
+      els.fileList.innerHTML = names.map((n) => `<div class="support-file-item">${escapeHtml(n)} (not uploaded yet)</div>`).join("");
     });
 
-    els.form?.addEventListener("submit", (e) => {
+    els.form?.addEventListener("submit", async (e) => {
       e.preventDefault();
-      if (els.submitBtn?.disabled) return;
-
-      const ticket = {
-        id: Date.now(),
-        subject: els.subject.value.trim(),
-        priority: els.priority.value,
-        message: els.message.value.trim(),
-        files: [...(els.files?.files || [])].slice(0, 3).map((f) => f.name),
-        status: "open",
-        created_at: new Date().toISOString(),
-      };
-
-      tickets.unshift(ticket);
-      saveTickets();
-      selectedId = ticket.id;
-      closeModal();
-      renderList(els.search?.value || "");
-      renderThread();
+      if (els.submitBtn?.disabled || sending) return;
+      sending = true;
+      els.submitBtn.disabled = true;
+      try {
+        const created = await window.AlphaFXApi.createSupportTicket({
+          subject: els.subject.value.trim(),
+          priority: els.priority.value,
+          message: els.message.value.trim(),
+        });
+        await loadTickets();
+        closeModal();
+        selectedId = created.id;
+        thread = created;
+        renderList(els.search?.value || "");
+        renderThreadView();
+        startPolling();
+      } catch (err) {
+        alert(err.message || "Could not create ticket");
+      } finally {
+        sending = false;
+        updateSubmitState();
+      }
     });
 
     els.search?.addEventListener("input", () => renderList(els.search.value));
+    window.addEventListener("beforeunload", stopPolling);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) stopPolling();
+      else if (selectedId) startPolling();
+    });
   }
 
-  function init() {
+  async function init() {
     cacheElements();
-    loadTickets();
     bindEvents();
-    renderList();
-    renderThread();
+    els.listBody.innerHTML = `<p class="support-empty-list">Loading tickets…</p>`;
+    try {
+      await loadTickets();
+      renderList();
+      renderThreadView();
+    } catch (err) {
+      els.listBody.innerHTML = `<p class="support-empty-list" style="color:var(--danger);">${escapeHtml(err.message || "Failed to load")}</p>`;
+    }
   }
 
-  document.addEventListener("DOMContentLoaded", init);
+  document.addEventListener("DOMContentLoaded", () => init().catch(console.error));
 })();

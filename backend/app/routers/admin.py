@@ -1,13 +1,14 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.dependencies_admin import get_admin_user
 from app.models import ChallengeAccount, Order, SimTrade, User, UserSession
 from app.schemas import AdminClosePositionRequest, AdminUserOut, AddStrikeRequest, BlockUserRequest, MessageResponse, StrikeOut
-from app.services import sim_engine
+from app.services import sim_engine, support as support_service
 from app.services.accounts import account_to_summary
 from app.services.notifications import create_notification
 from app.services.strikes import RULE_PRESETS, add_strike, clear_strikes, list_strikes, strike_count
@@ -387,4 +388,59 @@ def admin_stats(_admin: User = Depends(get_admin_user), db: Session = Depends(ge
         "open_positions": open_count,
         "pending_orders": pending_count,
         "active_traders": active_accounts,
+        "open_support_tickets": support_service.open_ticket_count(db),
+        "support_awaiting_reply": support_service.awaiting_reply_count(db),
     }
+
+
+class AdminSupportMessageRequest(BaseModel):
+    body: str = Field(min_length=1)
+
+
+@router.get("/support/tickets")
+def admin_list_support_tickets(_admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
+    return {"items": support_service.list_all_tickets(db)}
+
+
+@router.get("/support/tickets/{ticket_id}")
+def admin_get_support_ticket(
+    ticket_id: int,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    ticket = support_service.get_ticket_admin(db, ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Ticket not found"})
+    return support_service.ticket_detail(ticket, include_user=True)
+
+
+@router.post("/support/tickets/{ticket_id}/messages")
+def admin_reply_support_ticket(
+    ticket_id: int,
+    body: AdminSupportMessageRequest,
+    admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    ticket = support_service.get_ticket_admin(db, ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Ticket not found"})
+    if ticket.status == "closed":
+        raise HTTPException(status_code=400, detail={"code": "TICKET_CLOSED", "message": "Ticket is closed"})
+    try:
+        msg = support_service.add_message(db, ticket, admin, body.body, is_staff=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"code": "INVALID_MESSAGE", "message": str(exc)}) from exc
+    return {"message": msg}
+
+
+@router.post("/support/tickets/{ticket_id}/close")
+def admin_close_support_ticket(
+    ticket_id: int,
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    ticket = support_service.get_ticket_admin(db, ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Ticket not found"})
+    support_service.close_ticket(db, ticket)
+    return {"message": "Ticket closed"}

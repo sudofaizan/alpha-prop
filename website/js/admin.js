@@ -3,12 +3,19 @@
 
   let activeTab = "live";
   let liveTimer = null;
+  let supportTimer = null;
   let userDetailId = null;
   let userDetailAccountId = null;
+  let supportTickets = [];
+  let supportSelectedId = null;
+  let supportThread = null;
+  let supportSending = false;
+
+  const SUPPORT_POLL_MS = 3000;
 
   function tabFromHash() {
     const hash = (window.location.hash || "").replace("#", "").toLowerCase();
-    return ["live", "users", "accounts", "orders"].includes(hash) ? hash : "live";
+    return ["live", "users", "accounts", "orders", "support"].includes(hash) ? hash : "live";
   }
 
   function setActiveTab(tab, { skipHash = false, keepDetail = false } = {}) {
@@ -124,7 +131,155 @@
       <div class="admin-stat"><div class="admin-stat-label">Open positions</div><div class="admin-stat-value">${stats.open_positions ?? 0}</div></div>
       <div class="admin-stat"><div class="admin-stat-label">Pending orders</div><div class="admin-stat-value">${stats.pending_orders ?? 0}</div></div>
       <div class="admin-stat"><div class="admin-stat-label">Active traders</div><div class="admin-stat-value">${stats.active_traders ?? 0}</div></div>
-      <div class="admin-stat"><div class="admin-stat-label">Revenue</div><div class="admin-stat-value">${money(stats.revenue)}</div></div>`;
+      <div class="admin-stat"><div class="admin-stat-label">Revenue</div><div class="admin-stat-value">${money(stats.revenue)}</div></div>
+      <div class="admin-stat"><div class="admin-stat-label">Support open</div><div class="admin-stat-value">${stats.open_support_tickets ?? 0}</div></div>
+      <div class="admin-stat"><div class="admin-stat-label">Awaiting reply</div><div class="admin-stat-value">${stats.support_awaiting_reply ?? 0}</div></div>`;
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function supportWhen(iso) {
+    if (window.AlphaFXTime) return window.AlphaFXTime.formatTimeAgo(iso);
+    return iso ? new Date(iso).toLocaleString("en-GB") : "";
+  }
+
+  function supportWhenFull(iso) {
+    const d = window.AlphaFXTime ? window.AlphaFXTime.parseUtc(iso) : new Date(iso);
+    if (!d || Number.isNaN(d.getTime())) return "";
+    return d.toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  }
+
+  function renderSupportMessages(messages) {
+    return (messages || [])
+      .map(
+        (m) => `
+      <div class="support-chat-bubble${m.is_staff ? " is-staff" : " is-user"}">
+        <div class="support-chat-meta">${m.is_staff ? "Support" : escapeHtml(m.sender_name || "User")} · ${supportWhenFull(m.created_at)}</div>
+        <div class="support-chat-text">${escapeHtml(m.body)}</div>
+      </div>`
+      )
+      .join("");
+  }
+
+  function renderSupportListHtml() {
+    if (!supportTickets.length) {
+      return `<p class="support-empty-list">No support tickets yet</p>`;
+    }
+    return supportTickets
+      .map(
+        (t) => `
+      <button type="button" class="support-ticket-row${t.id === supportSelectedId ? " is-active" : ""}${t.needs_reply ? " needs-attention" : ""}" data-admin-support-id="${t.id}">
+        <div class="support-ticket-subject">${escapeHtml(t.subject)}</div>
+        <div class="support-ticket-meta">${escapeHtml(t.user_email || t.user_name || "User")} · ${t.priority} · ${supportWhen(t.last_message_at || t.created_at)}</div>
+      </button>`
+      )
+      .join("");
+  }
+
+  function renderSupportThreadHtml() {
+    if (!supportThread) {
+      return `<div class="pt-empty" style="margin:auto;padding:32px;"><div class="pt-empty-title">Select a ticket</div><p class="pt-empty-sub">Pick a conversation to chat with the user.</p></div>`;
+    }
+    const closed = supportThread.status === "closed";
+    return `
+      <div class="admin-support-thread-head">
+        <h3>${escapeHtml(supportThread.subject)}</h3>
+        <div class="admin-support-user-email">${escapeHtml(supportThread.user_email || "")}</div>
+        <div class="admin-muted">${escapeHtml(supportThread.user_name || "")} · ${supportThread.priority} · ${supportThread.status} · ${supportWhen(supportThread.created_at)}</div>
+        ${!closed ? `<div style="margin-top:10px;"><button type="button" class="admin-btn admin-btn--warn" data-admin-support-close="${supportThread.id}">Close ticket</button></div>` : ""}
+      </div>
+      <div class="support-chat-messages" id="admin-support-messages">${renderSupportMessages(supportThread.messages)}</div>
+      ${
+        closed
+          ? `<p class="support-ticket-meta support-chat-closed">Ticket closed.</p>`
+          : `<form class="support-chat-compose" id="admin-support-reply-form">
+          <textarea class="dfx-textarea" id="admin-support-reply-input" rows="2" placeholder="Reply to user…" required minlength="1"></textarea>
+          <button type="submit" class="pt-btn pt-btn--primary" id="admin-support-reply-btn">Send</button>
+        </form>`
+      }`;
+  }
+
+  function renderSupportPanel() {
+    setPanel(`
+      <div class="admin-support-grid dfx-scope">
+        <div class="admin-support-list" id="admin-support-list">${renderSupportListHtml()}</div>
+        <div class="admin-support-thread" id="admin-support-thread">${renderSupportThreadHtml()}</div>
+      </div>`);
+    const box = document.getElementById("admin-support-messages");
+    if (box) box.scrollTop = box.scrollHeight;
+  }
+
+  async function loadSupportTickets() {
+    const data = await window.AlphaFXApi.adminSupportTickets();
+    supportTickets = data.items || [];
+  }
+
+  async function loadSupportThread(id, { silent = false } = {}) {
+    if (!id) return;
+    const data = await window.AlphaFXApi.adminSupportTicket(id);
+    const prevLen = supportThread?.messages?.length || 0;
+    supportThread = data;
+    if (!silent) {
+      renderSupportPanel();
+      return;
+    }
+    const box = document.getElementById("admin-support-messages");
+    if (box && prevLen !== (data.messages?.length || 0)) {
+      box.innerHTML = renderSupportMessages(data.messages);
+      box.scrollTop = box.scrollHeight;
+    }
+    const list = document.getElementById("admin-support-list");
+    if (list) list.innerHTML = renderSupportListHtml();
+  }
+
+  async function selectSupportTicket(id) {
+    supportSelectedId = id;
+    supportThread = null;
+    renderSupportPanel();
+    const threadEl = document.getElementById("admin-support-thread");
+    if (threadEl) threadEl.innerHTML = `<div style="padding:24px;color:var(--text-dim);">Loading…</div>`;
+    await loadSupportThread(id);
+  }
+
+  async function renderSupport() {
+    await loadSupportTickets();
+    if (supportSelectedId && !supportTickets.some((t) => t.id === supportSelectedId)) {
+      supportSelectedId = null;
+      supportThread = null;
+    }
+    renderSupportPanel();
+    if (supportSelectedId) await loadSupportThread(supportSelectedId, { silent: true });
+    startSupportTimer();
+  }
+
+  function stopSupportTimer() {
+    if (supportTimer) {
+      clearInterval(supportTimer);
+      supportTimer = null;
+    }
+  }
+
+  function startSupportTimer() {
+    stopSupportTimer();
+    if (activeTab !== "support") return;
+    supportTimer = setInterval(async () => {
+      if (document.hidden) return;
+      try {
+        await loadSupportTickets();
+        const list = document.getElementById("admin-support-list");
+        if (list) list.innerHTML = renderSupportListHtml();
+        if (supportSelectedId) await loadSupportThread(supportSelectedId, { silent: true });
+        await loadStats();
+      } catch (err) {
+        console.error(err);
+      }
+    }, SUPPORT_POLL_MS);
   }
 
   async function renderLive() {
@@ -343,6 +498,11 @@
     }
   }
 
+  function stopAllTimers() {
+    stopLiveTimer();
+    stopSupportTimer();
+  }
+
   function startLiveTimer() {
     stopLiveTimer();
     if (activeTab === "live") {
@@ -351,7 +511,7 @@
   }
 
   async function renderTab() {
-    stopLiveTimer();
+    stopAllTimers();
     if (!userDetailId) setActiveTab(activeTab, { skipHash: true });
     setPanel(`<div style="padding:20px;color:var(--text-dim);">Loading…</div>`);
     if (activeTab === "live") {
@@ -364,6 +524,7 @@
     }
     if (activeTab === "accounts") await renderAccounts();
     if (activeTab === "orders") await renderOrders();
+    if (activeTab === "support") await renderSupport();
   }
 
   async function adminCloseTrade(tradeId) {
@@ -417,11 +578,60 @@
     }
   }
 
+  async function handleAdminSubmit(e) {
+    const form = e.target.closest("#admin-support-reply-form");
+    if (!form) return;
+    e.preventDefault();
+    if (supportSending || !supportSelectedId) return;
+    const input = document.getElementById("admin-support-reply-input");
+    const text = (input?.value || "").trim();
+    if (!text) return;
+    supportSending = true;
+    const btn = document.getElementById("admin-support-reply-btn");
+    if (btn) btn.disabled = true;
+    try {
+      await window.AlphaFXApi.adminSupportReply(supportSelectedId, text);
+      if (input) input.value = "";
+      await loadSupportThread(supportSelectedId);
+      await loadSupportTickets();
+      renderSupportPanel();
+    } catch (err) {
+      alert(err.message || "Send failed");
+    } finally {
+      supportSending = false;
+      if (btn) btn.disabled = false;
+    }
+  }
+
   async function handleAdminClick(e) {
     const tabBtn = e.target.closest("#admin-tabs .admin-tab");
     if (tabBtn) {
+      supportSelectedId = null;
+      supportThread = null;
       setActiveTab(tabBtn.dataset.tab || "live");
       renderTab().catch(console.error);
+      return;
+    }
+
+    const supportRow = e.target.closest("[data-admin-support-id]");
+    if (supportRow) {
+      e.preventDefault();
+      selectSupportTicket(Number(supportRow.dataset.adminSupportId)).catch(console.error);
+      return;
+    }
+
+    const supportClose = e.target.closest("[data-admin-support-close]");
+    if (supportClose) {
+      e.preventDefault();
+      if (!confirm("Close this support ticket?")) return;
+      window.AlphaFXApi.adminSupportClose(Number(supportClose.dataset.adminSupportClose))
+        .then(async () => {
+          await loadSupportThread(supportSelectedId);
+          await loadSupportTickets();
+          await loadStats();
+          renderSupportPanel();
+        })
+        .catch((err) => alert(err.message || "Close failed"));
       return;
     }
 
@@ -508,6 +718,7 @@
     if (adminEventsBound) return;
     adminEventsBound = true;
     document.addEventListener("click", handleAdminClick);
+    document.addEventListener("submit", handleAdminSubmit);
     document.addEventListener("change", handleAdminChange);
   }
 
@@ -544,5 +755,5 @@
     renderTab().catch(console.error);
   });
 
-  window.addEventListener("beforeunload", stopLiveTimer);
+  window.addEventListener("beforeunload", stopAllTimers);
 })();
