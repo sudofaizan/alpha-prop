@@ -79,6 +79,8 @@
   let chartResizeObserver = null;
   let liveBarQueued = false;
   let chartSource = "none";
+  let tradingEnabled = false;
+  let orderBusy = false;
 
   function chartBodyEl(container) {
     return container?.closest(".trade-chart-body") || container?.parentElement;
@@ -389,6 +391,7 @@
   function mapAccountMetrics(account) {
     if (!account) return;
     accountData = account;
+    const m = tradeSnapshot.metrics || {};
     const eq = document.getElementById("trade-equity");
     const bal = document.getElementById("trade-balance");
     const fm = document.getElementById("trade-free-margin");
@@ -396,16 +399,95 @@
     const up = document.getElementById("trade-unrealised");
     const topBal = document.getElementById("trade-account-balance");
 
-    if (eq) eq.textContent = money(account.equity);
-    if (bal) bal.textContent = money(account.balance);
-    if (fm) fm.textContent = money(account.equity);
-    if (mu) mu.textContent = money(0);
+    const equity = m.equity ?? account.equity;
+    const balance = m.balance ?? account.balance;
+    const openPnl = m.open_pnl ?? account.open_pnl;
+    const freeMargin = m.free_margin ?? equity;
+    const marginUsed = m.margin_used ?? 0;
+
+    if (eq) eq.textContent = money(equity);
+    if (bal) bal.textContent = money(balance);
+    if (fm) fm.textContent = money(freeMargin);
+    if (mu) mu.textContent = money(marginUsed);
     if (up) {
-      up.textContent = (account.open_pnl >= 0 ? "+" : "") + money(account.open_pnl);
-      up.classList.toggle("positive", account.open_pnl > 0);
-      up.classList.toggle("negative", account.open_pnl < 0);
+      up.textContent = (openPnl >= 0 ? "+" : "") + money(openPnl);
+      up.classList.toggle("positive", openPnl > 0);
+      up.classList.toggle("negative", openPnl < 0);
     }
-    if (topBal) topBal.textContent = `${money(account.equity)} USD · ${account.phase_label}`;
+    if (topBal) topBal.textContent = `${money(equity)} USD · ${account.phase_label}`;
+  }
+
+  function setTradingControls(enabled) {
+    tradingEnabled = Boolean(enabled);
+    ["trade-volume", "trade-sl", "trade-tp", "trade-buy-btn", "trade-sell-btn"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = !tradingEnabled || orderBusy;
+    });
+  }
+
+  function parseOptionalPrice(raw) {
+    const v = String(raw ?? "").trim();
+    if (!v || v === "—") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  async function submitOrder(side) {
+    if (!tradingEnabled || orderBusy || !accountId) return;
+    const volume = Number(document.getElementById("trade-volume")?.value || 0);
+    if (!volume || volume < 0.01) {
+      alert("Enter a valid volume (min 0.01 lots).");
+      return;
+    }
+    orderBusy = true;
+    setTradingControls(tradingEnabled);
+    try {
+      await window.AlphaFXApi.request("/api/v1/trade/orders", {
+        method: "POST",
+        body: JSON.stringify({
+          account_id: accountId,
+          symbol: activeSymbol,
+          side,
+          volume,
+          stop_loss: parseOptionalPrice(document.getElementById("trade-sl")?.value),
+          take_profit: parseOptionalPrice(document.getElementById("trade-tp")?.value),
+        }),
+      });
+      await loadTradeSnapshot();
+    } catch (e) {
+      alert(e?.message || "Order failed");
+    } finally {
+      orderBusy = false;
+      setTradingControls(tradingEnabled);
+    }
+  }
+
+  async function closePosition(tradeId) {
+    if (!accountId || orderBusy) return;
+    orderBusy = true;
+    setTradingControls(tradingEnabled);
+    try {
+      await window.AlphaFXApi.request(`/api/v1/trade/positions/${tradeId}/close`, {
+        method: "POST",
+        body: JSON.stringify({ account_id: accountId }),
+      });
+      await loadTradeSnapshot();
+    } catch (e) {
+      alert(e?.message || "Close failed");
+    } finally {
+      orderBusy = false;
+      setTradingControls(tradingEnabled);
+    }
+  }
+
+  function bindTradeActions() {
+    document.getElementById("trade-buy-btn")?.addEventListener("click", () => submitOrder("buy"));
+    document.getElementById("trade-sell-btn")?.addEventListener("click", () => submitOrder("sell"));
+    document.getElementById("trade-bottom-body")?.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-close-trade]");
+      if (!btn) return;
+      closePosition(Number(btn.dataset.closeTrade));
+    });
   }
 
   function renderAccountSelect(accounts, selectedId) {
@@ -434,6 +516,7 @@
         accountId = tradeSnapshot.account.id;
         mapAccountMetrics(tradeSnapshot.account);
       }
+      setTradingControls(tradeSnapshot.trading_enabled && tradeSnapshot.account);
       renderAccountSelect(tradeSnapshot.accounts || [], accountId);
       updateBottomCounts();
       renderBottomPanel();
@@ -466,22 +549,28 @@
 
     if (!items?.length) {
       const msgs = {
-        open: "No open positions. Orders will appear here once MT5 Manager is connected.",
-        pending: "No pending orders.",
+        open: "No open positions. Place a simulated market order from the ticket.",
+        pending: "No pending orders (limit/stop coming soon).",
         closed: "No closed trades yet.",
       };
       body.innerHTML = `<div class="trade-empty">${msgs[bottomPanel]}</div>`;
       return;
     }
 
+    const actionCol = bottomPanel === "open" ? "<th></th>" : "";
     body.innerHTML = `<div class="trade-table-wrap"><table class="trade-table">
       <thead><tr>
         <th>Order ID</th><th>Opened</th><th>Closed</th><th>Symbol</th><th>Side</th>
-        <th>Volume</th><th>Entry</th><th>Exit</th><th>P/L</th><th>Reason</th>
+        <th>Volume</th><th>Entry</th><th>Exit</th><th>P/L</th><th>Reason</th>${actionCol}
       </tr></thead>
       <tbody>${items
-        .map(
-          (r) => `<tr>
+        .map((r) => {
+          const pnl = r.pnl == null ? "—" : (Number(r.pnl) >= 0 ? "+" : "") + money(r.pnl);
+          const closeBtn =
+            bottomPanel === "open"
+              ? `<td><button type="button" class="trade-close-btn" data-close-trade="${r.id}">Close</button></td>`
+              : "";
+          return `<tr>
         <td>${r.id ?? "—"}</td>
         <td>${r.opened ?? "—"}</td>
         <td>${r.closed ?? "—"}</td>
@@ -490,10 +579,10 @@
         <td>${r.volume ?? "—"}</td>
         <td>${r.entry ?? "—"}</td>
         <td>${r.exit ?? "—"}</td>
-        <td class="${Number(r.pnl) >= 0 ? "positive" : "negative"}">${r.pnl ?? "—"}</td>
-        <td>${r.reason ?? "—"}</td>
-      </tr>`
-        )
+        <td class="${Number(r.pnl) >= 0 ? "positive" : "negative"}">${pnl}</td>
+        <td>${r.reason ?? "—"}</td>${closeBtn}
+      </tr>`;
+        })
         .join("")}</tbody></table></div>`;
   }
 
@@ -671,6 +760,7 @@
 
     bindBottomTabs();
     bindWatchlistToggle();
+    bindTradeActions();
     loadTimeframePref();
     renderTimeframes();
     bindTimeframes();

@@ -67,6 +67,9 @@ class TickUpstream:
             except Exception:
                 pass
 
+    def last_quote(self, symbol: str) -> dict[str, Any] | None:
+        return self._last.get(normalize_symbol(symbol))
+
     async def _run(self) -> None:
         while True:
             if settings.tick_mock or not settings.tick_hub_ws:

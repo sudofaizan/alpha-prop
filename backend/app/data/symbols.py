@@ -2,15 +2,15 @@
 
 SYMBOL_GROUPS = {
     "FOREX": [
-        {"symbol": "EURUSD", "name": "Euro vs US Dollar", "digits": 5, "tick_size": 0.00001},
-        {"symbol": "GBPUSD", "name": "British Pound vs US Dollar", "digits": 5, "tick_size": 0.00001},
-        {"symbol": "USDJPY", "name": "US Dollar vs Japanese Yen", "digits": 3, "tick_size": 0.001},
+        {"symbol": "EURUSD", "name": "Euro vs US Dollar", "digits": 5, "tick_size": 0.00001, "contract_size": 100000, "leverage": 100},
+        {"symbol": "GBPUSD", "name": "British Pound vs US Dollar", "digits": 5, "tick_size": 0.00001, "contract_size": 100000, "leverage": 100},
+        {"symbol": "USDJPY", "name": "US Dollar vs Japanese Yen", "digits": 3, "tick_size": 0.001, "contract_size": 100000, "leverage": 100},
     ],
     "COMMODITIES": [
-        {"symbol": "XAUUSD", "name": "Gold vs US Dollar", "digits": 2, "tick_size": 0.01},
+        {"symbol": "XAUUSD", "name": "Gold vs US Dollar", "digits": 2, "tick_size": 0.01, "contract_size": 100, "leverage": 100},
     ],
     "CRYPTO": [
-        {"symbol": "BTCUSD", "name": "Bitcoin vs US Dollar", "digits": 3, "tick_size": 0.001},
+        {"symbol": "BTCUSD", "name": "Bitcoin vs US Dollar", "digits": 3, "tick_size": 0.001, "contract_size": 1, "leverage": 10},
     ],
 }
 

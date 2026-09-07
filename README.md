@@ -390,7 +390,8 @@ MT5 AlphaFXBridge  ── ticks + CopyRates bars ── TCP :9001 ──► Tick
 - [x] EC2 deploy script + nginx
 - [x] Tick hub + WebSocket quotes + Trade terminal shell (mock/MT5)
 - [x] MT5 M1 bar history (AlphaFXBridge EA → tick hub → /market/history)
-- [ ] MT5 Manager API order routing (web BUY/SELL)
+- [x] Simulated trading engine (backend stateful orders — challenge phases)
+- [ ] MT5 Manager API order routing (post-funding / live accounts)
 - [ ] TradingView Charting Library (Capiffy parity)
 - [ ] Real Stripe payment
 - [ ] MT5 trade sync + live statistics

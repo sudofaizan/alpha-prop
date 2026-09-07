@@ -30,3 +30,4 @@ class ChallengeAccount(Base):
 
     user = relationship("User", back_populates="accounts")
     order = relationship("Order", back_populates="account", uselist=False)
+    sim_trades = relationship("SimTrade", back_populates="account", cascade="all, delete-orphan")
