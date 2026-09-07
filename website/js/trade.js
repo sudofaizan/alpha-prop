@@ -403,6 +403,45 @@
     });
   }
 
+  function resizeChartSoon() {
+    const container = document.getElementById("trade-chart");
+    if (!chart || !container) return;
+    requestAnimationFrame(() => {
+      const w = Math.max(container.clientWidth, 320);
+      const h = Math.max(container.clientHeight, 420);
+      chart.applyOptions({ width: w, height: h });
+    });
+  }
+
+  function bindWatchlistToggle() {
+    const btn = document.getElementById("trade-watchlist-toggle");
+    const main = document.getElementById("trade-main");
+    if (!btn || !main) return;
+
+    const KEY = "alphafx_trade_watchlist";
+    try {
+      if (localStorage.getItem(KEY) === "collapsed") {
+        main.classList.add("watchlist-collapsed");
+        btn.setAttribute("aria-expanded", "false");
+        btn.title = "Show watchlist";
+      }
+    } catch {
+      /* ignore */
+    }
+
+    btn.addEventListener("click", () => {
+      const collapsed = main.classList.toggle("watchlist-collapsed");
+      btn.setAttribute("aria-expanded", String(!collapsed));
+      btn.title = collapsed ? "Show watchlist" : "Hide watchlist";
+      try {
+        localStorage.setItem(KEY, collapsed ? "collapsed" : "open");
+      } catch {
+        /* ignore */
+      }
+      setTimeout(resizeChartSoon, 280);
+    });
+  }
+
   async function selectSymbol(symbol) {
     activeSymbol = symbol;
     openTab(symbol);
@@ -540,6 +579,13 @@
     initialized = true;
 
     bindBottomTabs();
+    bindWatchlistToggle();
+    document.getElementById("pt-sidebar-toggle")?.addEventListener("click", () => {
+      setTimeout(resizeChartSoon, 280);
+    });
+    if (document.getElementById("trade-main")?.classList.contains("watchlist-collapsed")) {
+      setTimeout(resizeChartSoon, 0);
+    }
     await loadSymbols();
     await loadTradeSnapshot();
 

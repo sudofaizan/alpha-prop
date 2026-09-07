@@ -28,8 +28,22 @@
         </div>
       </div>
 
-      <div class="trade-main">
-        <aside class="trade-watchlist" id="trade-watchlist" aria-label="Watchlist"></aside>
+      <div class="trade-main" id="trade-main">
+        <div class="trade-watchlist-panel" id="trade-watchlist-panel">
+          <aside class="trade-watchlist" id="trade-watchlist" aria-label="Watchlist"></aside>
+          <button
+            type="button"
+            class="trade-panel-toggle"
+            id="trade-watchlist-toggle"
+            title="Hide watchlist"
+            aria-controls="trade-watchlist"
+            aria-expanded="true"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 18l-6-6 6-6"></path>
+            </svg>
+          </button>
+        </div>
 
         <section class="trade-chart-wrap">
           <div class="trade-chart-badge" id="trade-chart-badge">Loading…</div>
@@ -84,6 +98,6 @@
   <script src="js/api.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/ws-quotes.js"></script>
-  <script src="js/trade.js?v=20260907c"></script>
+  <script src="js/trade.js?v=20260907d"></script>
 </body>
 </html>
