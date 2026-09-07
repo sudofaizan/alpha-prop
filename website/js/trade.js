@@ -390,10 +390,10 @@
     if (tick.symbol === activeSymbol) updateChartBadge(tick.symbol);
   }
 
-  function mapAccountMetrics(account) {
+  function mapAccountMetrics(account, live = null) {
     if (!account) return;
     accountData = account;
-    const m = tradeSnapshot.metrics || {};
+    const m = live || tradeSnapshot.metrics || {};
     const eq = document.getElementById("trade-equity");
     const bal = document.getElementById("trade-balance");
     const fm = document.getElementById("trade-free-margin");
@@ -401,11 +401,11 @@
     const up = document.getElementById("trade-unrealised");
     const topBal = document.getElementById("trade-account-balance");
 
-    const equity = m.equity ?? account.equity;
     const balance = m.balance ?? account.balance;
     const openPnl = m.open_pnl ?? account.open_pnl;
-    const freeMargin = m.free_margin ?? equity;
+    const equity = m.equity ?? balance + openPnl;
     const marginUsed = m.margin_used ?? 0;
+    const freeMargin = m.free_margin ?? equity - marginUsed;
 
     if (eq) eq.textContent = money(equity);
     if (bal) bal.textContent = money(balance);
@@ -417,6 +417,81 @@
       up.classList.toggle("negative", openPnl < 0);
     }
     if (topBal) topBal.textContent = `${money(equity)} USD · ${account.phase_label}`;
+  }
+
+  let liveMetricsRaf = null;
+
+  function positionSymbols() {
+    return [...new Set((tradeSnapshot.open || []).map((p) => p.symbol).filter(Boolean))];
+  }
+
+  function syncPositionQuoteSubscriptions() {
+    const syms = positionSymbols();
+    if (syms.length && window.AlphaFXQuotes?.subscribe) {
+      window.AlphaFXQuotes.subscribe(syms);
+    }
+  }
+
+  function computeLiveMetrics() {
+    const open = tradeSnapshot.open || [];
+    const base = tradeSnapshot.metrics || {};
+    const balance = base.balance ?? accountData?.balance ?? 0;
+    const marginUsed = base.margin_used ?? 0;
+    if (!open.length) {
+      return {
+        balance,
+        open_pnl: base.open_pnl ?? accountData?.open_pnl ?? 0,
+        equity: base.equity ?? accountData?.equity ?? balance,
+        margin_used: marginUsed,
+        free_margin: (base.equity ?? balance) - marginUsed,
+      };
+    }
+
+    let openPnl = 0;
+    const pnlById = {};
+    for (const pos of open) {
+      const tick = window.AlphaFXQuotes?.getLast(pos.symbol);
+      const pnl = tick
+        ? window.AlphaFXSimPnl.positionPnl(
+            { symbol: pos.symbol, side: pos.side, volume: pos.volume, entry: pos.entry },
+            tick,
+            symbolMeta[pos.symbol]
+          )
+        : Number(pos.pnl || 0);
+      pnlById[pos.id] = pnl;
+      openPnl += pnl;
+      pos.pnl = pnl;
+    }
+
+    openPnl = Math.round(openPnl * 100) / 100;
+    const equity = Math.round((balance + openPnl) * 100) / 100;
+    return {
+      balance,
+      open_pnl: openPnl,
+      equity,
+      margin_used: marginUsed,
+      free_margin: Math.round((equity - marginUsed) * 100) / 100,
+      pnlById,
+    };
+  }
+
+  function refreshLiveMetrics() {
+    if (!accountData || !(tradeSnapshot.open || []).length) return;
+    if (liveMetricsRaf) return;
+    liveMetricsRaf = requestAnimationFrame(() => {
+      liveMetricsRaf = null;
+      const live = computeLiveMetrics();
+      mapAccountMetrics(accountData, live);
+      if (live.pnlById) {
+        for (const [id, pnl] of Object.entries(live.pnlById)) {
+          const cell = document.querySelector(`[data-trade-pnl="${id}"]`);
+          if (!cell) continue;
+          cell.textContent = (pnl >= 0 ? "+" : "") + money(pnl);
+          cell.classList.toggle("positive", pnl > 0);
+          cell.classList.toggle("negative", pnl < 0);
+        }
+      }
+    });
   }
 
   function setTradingControls(enabled) {
@@ -520,6 +595,8 @@
       }
       setTradingControls(tradeSnapshot.trading_enabled && tradeSnapshot.account);
       renderAccountSelect(tradeSnapshot.accounts || [], accountId);
+      syncPositionQuoteSubscriptions();
+      refreshLiveMetrics();
       updateBottomCounts();
       renderBottomPanel();
     } catch (e) {
@@ -581,7 +658,7 @@
         <td>${r.volume ?? "—"}</td>
         <td>${r.entry ?? "—"}</td>
         <td>${r.exit ?? "—"}</td>
-        <td class="${Number(r.pnl) >= 0 ? "positive" : "negative"}">${pnl}</td>
+        <td class="${Number(r.pnl) >= 0 ? "positive" : "negative"}"${bottomPanel === "open" ? ` data-trade-pnl="${r.id}"` : ""}>${pnl}</td>
         <td>${r.reason ?? "—"}</td>${closeBtn}
       </tr>`;
         })
@@ -739,6 +816,8 @@
 
   async function onTick(tick) {
     updateWatchlistPrice(tick);
+    refreshLiveMetrics();
+
     if (tick.symbol !== activeSymbol) return;
 
     const container = document.getElementById("trade-chart");
