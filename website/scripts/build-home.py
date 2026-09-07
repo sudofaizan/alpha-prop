@@ -22,13 +22,13 @@ LINK_REPLACEMENTS = [
     ("https://capiffy.com/faq", "index.html#faq"),
     ("https://capiffy.com/contact", "support.html"),
     ("https://capiffy.com/about", "index.html"),
-    ("https://capiffy.com/", "home.html"),
     ("https://capiffy.com/risk-disclosure", "#"),
     ("https://capiffy.com/terms", "#"),
     ("https://capiffy.com/privacy", "#"),
     ("https://capiffy.com/refund", "#"),
     ("https://capiffy.com/cookies", "#"),
     ("https://capiffy.com/aml", "#"),
+    ("https://capiffy.com/", "/"),
 ]
 
 HEAD = """<!DOCTYPE html>
@@ -49,8 +49,7 @@ HEAD = """<!DOCTYPE html>
 {content}
   <script src="js/config.js"></script>
   <script src="js/api.js"></script>
-  <script src="js/auth.js"></script>
-  <script src="js/home.js?v=20260907a"></script>
+  <script src="js/home.js?v=20260907b"></script>
 </body>
 </html>
 """
@@ -78,7 +77,8 @@ def transform(content: str) -> str:
     content = content.replace("Capiffy", "AlphaFX")
     content = content.replace("CPF-2026", "AFX-2026")
     content = content.replace("OFF32", "ALPHA38")
-    content = re.sub(r'href="home\.html"', 'href="/"', content)
+    content = content.replace("Support@capiffy.com", "support@alphafx.org")
+    content = re.sub(r'href="/"', 'href="/"', content)
     return content
 
 
