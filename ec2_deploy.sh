@@ -25,6 +25,21 @@ WEB_ROOT="/var/www/alphafx"
 log() { printf '\n==> %s\n' "$*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
 
+wait_for_url() {
+  local url="$1"
+  local label="$2"
+  local tries="${3:-15}"
+  local i=1
+  while (( i <= tries )); do
+    if curl -sf "$url" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"'; then
+      return 0
+    fi
+    sleep 1
+    i=$((i + 1))
+  done
+  die "${label} health check failed (${url})"
+}
+
 [[ -d "$BACKEND" && -d "$WEBSITE" ]] || die "Run this from the repo root (need backend/ and website/)."
 
 if [[ "$(id -u)" -eq 0 ]]; then
@@ -286,10 +301,9 @@ sudo systemctl restart nginx
 
 # ── Health checks ─────────────────────────────────────────────────────────────
 log "Running health checks…"
-sleep 2
-curl -sf http://127.0.0.1:8000/health | grep -q '"status":"ok"' || die "API health check failed"
+wait_for_url "http://127.0.0.1:8000/health" "API"
 if [[ -d "$TICK_HUB_DIR" ]]; then
-  curl -sf http://127.0.0.1:9003/health | grep -q '"status":"ok"' || die "Tick hub health check failed (port 9003)"
+  wait_for_url "http://127.0.0.1:9003/health" "Tick hub" 20
 fi
 STATIC_CODE="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/register.html 2>/dev/null || echo '000')"
 [[ "$STATIC_CODE" == "200" ]] || die "nginx static check failed (GET /register.html → HTTP ${STATIC_CODE}). Try: curl -v http://127.0.0.1/register.html"
