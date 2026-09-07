@@ -77,7 +77,10 @@
     getTradeSnapshot: (accountId) =>
       request(`/api/v1/trade/snapshot${accountId ? `?account_id=${accountId}` : ""}`),
     getMarketSymbols: () => request("/api/v1/market/symbols"),
-    getMarketHistory: (symbol, timeframe = "M1", limit = 240) =>
-      request(`/api/v1/market/history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}`),
+    getMarketHistory: (symbol, timeframe = "M1", limit = 240, anchor) => {
+      let url = `/api/v1/market/history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}`;
+      if (anchor != null) url += `&anchor=${encodeURIComponent(anchor)}`;
+      return request(url);
+    },
   };
 })();

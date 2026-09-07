@@ -263,7 +263,7 @@
     });
   }
 
-  function selectSymbol(symbol) {
+  async function selectSymbol(symbol) {
     activeSymbol = symbol;
     openTab(symbol);
     renderSymbolTabs();
@@ -272,8 +272,8 @@
     });
     const last = window.AlphaFXQuotes.getLast(symbol);
     if (last) updateTicket(last);
-    loadChart(symbol);
     window.AlphaFXQuotes.subscribe([symbol]);
+    await loadChart(symbol);
   }
 
   async function loadSymbols() {
@@ -282,6 +282,34 @@
     renderWatchlist();
     loadTabs();
     renderSymbolTabs();
+  }
+
+  function waitForQuote(symbol, timeoutMs = 4000) {
+    return new Promise((resolve) => {
+      const sym = symbol.toUpperCase();
+      const existing = window.AlphaFXQuotes?.getLast(sym);
+      if (existing) {
+        resolve(existing);
+        return;
+      }
+      let done = false;
+      const finish = (tick) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        if (off) off();
+        resolve(tick || null);
+      };
+      const timer = setTimeout(() => finish(window.AlphaFXQuotes?.getLast(sym)), timeoutMs);
+      const off = window.AlphaFXQuotes?.onTick((tick) => {
+        if (tick.symbol === sym) finish(tick);
+      });
+    });
+  }
+
+  function anchorFromTick(tick) {
+    if (!tick) return null;
+    return (tick.bid + tick.ask) / 2;
   }
 
   async function loadChart(symbol) {
@@ -309,9 +337,13 @@
       resize();
     }
 
+    const tick = window.AlphaFXQuotes?.getLast(symbol) || (await waitForQuote(symbol, 2000));
+    const anchor = anchorFromTick(tick);
+    const anchorQ = anchor != null ? `&anchor=${encodeURIComponent(anchor)}` : "";
+
     try {
       const hist = await window.AlphaFXApi.request(
-        `/api/v1/market/history?symbol=${encodeURIComponent(symbol)}&timeframe=M1&limit=240`
+        `/api/v1/market/history?symbol=${encodeURIComponent(symbol)}&timeframe=M1&limit=240${anchorQ}`
       );
       barBuffer = (hist.bars || []).map((b) => ({
         time: b.time,
@@ -322,6 +354,9 @@
       }));
       series.setData(barBuffer);
       chart.timeScale().scrollToRealTime();
+      if (tick && tick.symbol === symbol) {
+        onTick(tick);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -352,15 +387,15 @@
     bindBottomTabs();
     await loadSymbols();
     await loadTradeSnapshot();
-    await loadChart(activeSymbol);
 
     const allSymbols = Object.values(groups).flat().map((i) => i.symbol);
     window.AlphaFXQuotes.onTick(onTick);
     window.AlphaFXQuotes.connect(allSymbols);
     window.addEventListener("alphafx:quotes:status", (e) => setLiveStatus(e.detail?.live));
 
-    if (openTabs.includes(activeSymbol)) selectSymbol(activeSymbol);
-    else selectSymbol(openTabs[0] || DEFAULT_SYMBOL);
+    const startSym = openTabs.includes(activeSymbol) ? activeSymbol : openTabs[0] || DEFAULT_SYMBOL;
+    await waitForQuote(startSym, 5000);
+    await selectSymbol(startSym);
 
     accountPollTimer = setInterval(loadTradeSnapshot, 8000);
   }
