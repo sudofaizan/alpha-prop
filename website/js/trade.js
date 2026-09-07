@@ -981,6 +981,15 @@
     requestAnimationFrame(() => applyChartSize(container));
   }
 
+  function applyMobileTradeLayout() {
+    const main = document.getElementById("trade-main");
+    if (!main) return;
+    const mobile = window.matchMedia("(max-width: 960px)").matches;
+    main.classList.toggle("trade-mobile", mobile);
+    if (mobile) main.classList.add("watchlist-collapsed");
+    resizeChartSoon();
+  }
+
   function bindWatchlistToggle() {
     const btn = document.getElementById("trade-watchlist-toggle");
     const main = document.getElementById("trade-main");
@@ -1174,6 +1183,9 @@
     }
     await waitForQuote(startSym, 5000);
     await selectSymbol(startSym);
+
+    applyMobileTradeLayout();
+    window.addEventListener("resize", applyMobileTradeLayout);
 
     accountPollTimer = setInterval(loadTradeSnapshot, 8000);
   }

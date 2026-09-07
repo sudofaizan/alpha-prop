@@ -776,12 +776,164 @@ body[data-page="trade"] .dashboard-main {
 }
 
 @media (max-width: 960px) {
-  .trade-main {
-    grid-template-columns: 1fr;
+  body[data-page="trade"] .dashboard-main {
+    overflow-y: auto !important;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding: 4px 0 calc(60px + env(safe-area-inset-bottom, 0px)) !important;
   }
-  .trade-watchlist-panel,
-  .trade-ticket {
+
+  .trade-terminal {
+    margin: 0;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .trade-topbar {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+
+  .trade-symbol-tabs {
+    flex: 1 1 100%;
+    order: 1;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .trade-symbol-tabs::-webkit-scrollbar {
     display: none;
+  }
+
+  .trade-symbol-tab {
+    flex-shrink: 0;
+  }
+
+  .trade-account-bar {
+    order: 2;
+    margin-left: 0;
+    margin-right: 0;
+    flex: 1 1 auto;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .trade-account-select {
+    max-width: none;
+    flex: 1 1 140px;
+    min-width: 0;
+    font-size: 11px;
+  }
+
+  .trade-account-balance {
+    font-size: 11px;
+    white-space: normal;
+  }
+
+  .trade-status {
+    order: 3;
+    font-size: 10px;
+  }
+
+  .trade-main {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 auto;
+    overflow: visible;
+    min-height: 0;
+  }
+
+  .trade-watchlist-panel {
+    display: none;
+  }
+
+  .trade-chart-wrap {
+    flex: 0 0 auto;
+    height: clamp(220px, 38vh, 340px);
+    min-height: 220px;
+    max-height: 340px;
+  }
+
+  .trade-chart-toolbar {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .trade-timeframes {
+    flex-wrap: nowrap;
+  }
+
+  .trade-chart-body {
+    touch-action: pan-y pinch-zoom;
+  }
+
+  .trade-ticket {
+    display: flex !important;
+    flex: 0 0 auto;
+    border-left: none;
+    border-top: 1px solid var(--trade-line);
+    padding: 12px;
+    gap: 10px;
+    overflow: visible;
+  }
+
+  .trade-ticket-tabs button {
+    padding: 10px 6px;
+    font-size: 11px;
+  }
+
+  .trade-field input {
+    padding: 12px 10px;
+    font-size: 16px;
+  }
+
+  .trade-actions {
+    gap: 10px;
+  }
+
+  .trade-actions button {
+    padding: 16px 10px;
+    font-size: 13px;
+    min-height: 56px;
+  }
+
+  .trade-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 12px;
+    font-size: 10px;
+    padding-top: 8px;
+    margin-top: 0;
+  }
+
+  .trade-bottom {
+    flex: 0 0 auto;
+    min-height: 120px;
+    max-height: none;
+  }
+
+  .trade-bottom-tabs button {
+    padding: 10px 12px;
+    font-size: 11px;
+  }
+
+  .trade-bottom-body {
+    padding: 10px 12px;
+    max-height: min(220px, 30vh);
+  }
+
+  .trade-toast-wrap {
+    top: auto;
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    right: 12px;
+    left: 12px;
   }
 }
 
