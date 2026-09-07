@@ -85,6 +85,21 @@
     return `${sign}$${Math.abs(n).toFixed(2)}`;
   }
 
+  /** User-friendly price on SL/TP tags ($ for USD-quoted symbols). */
+  function fmtTagPrice(symbol, value) {
+    const p = fmtPrice(symbol, value);
+    const usdQuoted = /USD$|^XAU|^XAG|^BTC|^ETH|^NAS|^US30|^SPX/i.test(symbol);
+    return usdQuoted ? `$${p}` : p;
+  }
+
+  function updateTagPrices(o) {
+    const sym = o.pos.symbol;
+    const slPx = o.slRow?.querySelector(".cpf-pos-tag-price");
+    const tpPx = o.tpRow?.querySelector(".cpf-pos-tag-price");
+    if (slPx && o.slVal != null) slPx.textContent = fmtTagPrice(sym, o.slVal);
+    if (tpPx && o.tpVal != null) tpPx.textContent = fmtTagPrice(sym, o.tpVal);
+  }
+
   function chartY(clientY) {
     if (!container) return null;
     const rect = container.getBoundingClientRect();
@@ -198,12 +213,18 @@
     return row;
   }
 
-  function buildTag(kind, posId, saved) {
+  function buildTag(kind, pos, price, saved) {
     const row = document.createElement("div");
     row.className = `cpf-pos-row cpf-pos-row--${kind}${saved ? "" : " is-draft"}`;
-    row.dataset.posId = String(posId);
+    row.dataset.posId = String(pos.id);
     row.dataset.kind = kind;
-    row.innerHTML = `<span class="cpf-pos-tag cpf-pos-tag--${kind}">${kind.toUpperCase()}</span>`;
+    const px = fmtTagPrice(pos.symbol, price);
+    row.innerHTML = `
+      <span class="cpf-pos-tag cpf-pos-tag--${kind}">
+        <span class="cpf-pos-tag-label">${kind.toUpperCase()}</span>
+        <span class="cpf-pos-tag-price">${px}</span>
+      </span>
+    `;
     return row;
   }
 
@@ -231,6 +252,7 @@
     } else if (o.tpRow) {
       o.tpRow.style.display = "none";
     }
+    updateTagPrices(o);
   }
 
   function layoutAll() {
@@ -258,8 +280,8 @@
     const tpLine = createLine(tp, COLORS.tp, tpSaved, COLORS.tpAxis, COLORS.tpText);
 
     const entryRow = buildEntryPill(pos);
-    const slRow = buildTag("sl", pos.id, slSaved);
-    const tpRow = buildTag("tp", pos.id, tpSaved);
+    const slRow = buildTag("sl", pos, sl, slSaved);
+    const tpRow = buildTag("tp", pos, tp, tpSaved);
     overlayRoot.append(entryRow, slRow, tpRow);
 
     const record = {

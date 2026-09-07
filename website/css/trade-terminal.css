@@ -406,20 +406,35 @@
   left: 10px;
   top: 0;
   transform: translateY(-50%);
-  min-width: 22px;
-  padding: 3px 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 6px;
   font-family: var(--font-body, system-ui, sans-serif);
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.06em;
-  text-align: center;
   color: #fff;
-  border-radius: 2px;
+  border-radius: 3px;
   pointer-events: auto;
   cursor: ns-resize;
   user-select: none;
   line-height: 1.2;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  white-space: nowrap;
+}
+
+.cpf-pos-tag-label {
+  flex-shrink: 0;
+}
+
+.cpf-pos-tag-price {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  padding-left: 6px;
+  border-left: 1px solid rgba(255, 255, 255, 0.28);
 }
 
 .cpf-pos-tag--sl {
