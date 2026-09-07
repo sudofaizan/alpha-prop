@@ -7,15 +7,6 @@ from app.data.symbols import SYMBOL_GROUPS, resolve_symbol
 
 router = APIRouter(prefix="/market", tags=["market"])
 
-DEFAULT_BASE = {
-    "EURUSD": 1.085,
-    "GBPUSD": 1.265,
-    "USDJPY": 149.5,
-    "XAUUSD": 2650.0,
-    "BTCUSD": 80000.0,
-}
-
-# Max random walk step per bar (keeps synthetic history realistic)
 _VOL = {
     "EURUSD": 0.0004,
     "GBPUSD": 0.0005,
@@ -43,22 +34,24 @@ def market_history(
         return {"symbol": symbol.upper(), "timeframe": timeframe, "bars": []}
 
     sym = meta["symbol"]
+    if anchor is None or anchor <= 0:
+        return {"symbol": sym, "timeframe": timeframe, "bars": []}
+
     digits = meta["digits"]
     now = int(time.time())
     step = 60 if timeframe.upper() in ("M1", "1") else 300
     vol = _VOL.get(sym, 0.001)
 
-    end_price = float(anchor) if anchor is not None and anchor > 0 else DEFAULT_BASE.get(sym, 100.0)
-    # Walk backwards from anchor so the last bar closes near live price
+    end_price = float(anchor)
     price = end_price
-    bars_rev = []
+    bars = []
     for i in range(limit):
         t = now - (limit - i) * step
         c = price
         o = price + random.uniform(-vol, vol)
         h = max(o, c) + abs(random.uniform(0, vol * 0.5))
         l = min(o, c) - abs(random.uniform(0, vol * 0.5))
-        bars_rev.append(
+        bars.append(
             {
                 "time": t,
                 "open": round(o, digits),
@@ -68,7 +61,5 @@ def market_history(
             }
         )
         price = o + random.uniform(-vol, vol)
-
-    bars = bars_rev
 
     return {"symbol": sym, "timeframe": timeframe, "anchor": end_price, "bars": bars}

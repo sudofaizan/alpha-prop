@@ -20,6 +20,14 @@
   let lastPrices = {};
   let initialized = false;
   let accountPollTimer = null;
+  let chartLoading = false;
+
+  function priceDrift(mid) {
+    if (!barBuffer.length) return false;
+    const lastClose = barBuffer[barBuffer.length - 1].close;
+    if (!lastClose || !mid) return false;
+    return Math.abs(mid - lastClose) / mid > 0.015;
+  }
 
   const money = (n) =>
     `$${Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -337,13 +345,20 @@
       resize();
     }
 
-    const tick = window.AlphaFXQuotes?.getLast(symbol) || (await waitForQuote(symbol, 2000));
+    const tick = window.AlphaFXQuotes?.getLast(symbol) || (await waitForQuote(symbol, 8000));
     const anchor = anchorFromTick(tick);
-    const anchorQ = anchor != null ? `&anchor=${encodeURIComponent(anchor)}` : "";
+    const badge = document.getElementById("trade-chart-badge");
+
+    if (anchor == null) {
+      barBuffer = [];
+      series.setData([]);
+      if (badge) badge.textContent = `Waiting for live | ${symbol}`;
+      return;
+    }
 
     try {
       const hist = await window.AlphaFXApi.request(
-        `/api/v1/market/history?symbol=${encodeURIComponent(symbol)}&timeframe=M1&limit=240${anchorQ}`
+        `/api/v1/market/history?symbol=${encodeURIComponent(symbol)}&timeframe=M1&limit=240&anchor=${encodeURIComponent(anchor)}`
       );
       barBuffer = (hist.bars || []).map((b) => ({
         time: b.time,
@@ -354,18 +369,26 @@
       }));
       series.setData(barBuffer);
       chart.timeScale().scrollToRealTime();
-      if (tick && tick.symbol === symbol) {
-        onTick(tick);
-      }
+      if (badge) badge.textContent = `Live | ${symbol}`;
     } catch (e) {
       console.error(e);
     }
   }
 
-  function onTick(tick) {
+  async function onTick(tick) {
     updateWatchlistPrice(tick);
     if (!series || tick.symbol !== activeSymbol) return;
+
     const mid = (tick.bid + tick.ask) / 2;
+    if (barBuffer.length === 0 || priceDrift(mid)) {
+      if (!chartLoading) {
+        chartLoading = true;
+        await loadChart(activeSymbol);
+        chartLoading = false;
+      }
+      if (barBuffer.length === 0) return;
+    }
+
     const bucket = Math.floor(tick.time_ms / 60000) * 60;
     const last = barBuffer[barBuffer.length - 1];
     if (!last || last.time !== bucket) {
