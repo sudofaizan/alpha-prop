@@ -96,8 +96,21 @@ function navItem(item, active, isAdmin) {
   return `<a class="${cls}" href="${item.href}"><span class="pt-nav-item-icon">${svg(item.icon)}</span><span class="pt-nav-item-label">${item.label}</span>${badge}</a>`;
 }
 
+function isChallengesPage() {
+  const page = document.body.dataset.page;
+  if (page === "challenges") return true;
+  const path = window.location.pathname.toLowerCase();
+  return path.endsWith("/index.html") || path.endsWith("/") || path.endsWith("index.html");
+}
+
+function shouldShowPromo(isAdmin) {
+  if (isAdmin || !isChallengesPage()) return false;
+  return sessionStorage.getItem("alphafx-promo-dismissed") !== "1";
+}
+
 function renderPromo() {
-  return `<div class="pt-promo">
+  return `<div class="pt-promo" id="sidebar-promo">
+      <button type="button" class="pt-promo-dismiss" id="dismiss-promo" aria-label="Dismiss promo" title="Dismiss">×</button>
       <div class="pt-promo-label">${svg("gift", 11)}Live promo · 38% off</div>
       <p class="pt-promo-body">38% off all accounts</p>
       <button type="button" title="Click to copy" class="pt-promo-code" id="copy-promo"><span>${PROMO_CODE}</span>${svg("copy", 13)}</button>
@@ -111,7 +124,7 @@ function renderSidebar(active, isAdmin) {
   const brandHref = isAdmin ? "admin.html" : "dashboard.html";
   const brandSub = isAdmin ? "Admin Console" : "Trader Portal";
   const nav = navItems.map((item) => navItem(item, active, isAdmin)).join("");
-  const promo = !isAdmin && active === "challenges" ? renderPromo() : "";
+  const promo = shouldShowPromo(isAdmin) ? renderPromo() : "";
   return `<aside class="pt-sidebar${isAdmin ? " pt-sidebar--admin" : ""}" id="pt-sidebar">
     <a class="pt-sidebar-brand" href="${brandHref}">${brandLogo()}<div><div class="pt-sidebar-brand-title">${BRAND}</div><div class="pt-sidebar-brand-sub">${brandSub}</div></div></a>
     <button type="button" title="Collapse" class="pt-sidebar-toggle" id="pt-sidebar-toggle"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(180deg);transition:transform 240ms var(--ease-out-quart)"><path d="M9 18l6-6-6-6"></path></svg></button>
@@ -170,6 +183,10 @@ function bindShellEvents() {
   document.getElementById("copy-promo")?.addEventListener("click", () => {
     navigator.clipboard?.writeText(PROMO_CODE);
   });
+  document.getElementById("dismiss-promo")?.addEventListener("click", () => {
+    sessionStorage.setItem("alphafx-promo-dismissed", "1");
+    document.getElementById("sidebar-promo")?.remove();
+  });
   document.getElementById("pt-sidebar-toggle")?.addEventListener("click", () => {
     document.getElementById("pt-sidebar")?.classList.toggle("is-collapsed");
   });
@@ -202,6 +219,22 @@ function refreshShellForUser(user) {
 }
 
 function initLayout() {
+  if (!document.getElementById("alphafx-promo-guard")) {
+    const style = document.createElement("style");
+    style.id = "alphafx-promo-guard";
+    style.textContent = `
+      body:not([data-page="challenges"]) .pt-sidebar .pt-promo { display: none !important; }
+      .pt-promo-dismiss {
+        position: absolute; top: 8px; right: 8px; width: 24px; height: 24px;
+        border: none; border-radius: 6px; background: rgba(26, 21, 5, 0.2);
+        color: #1a1505; font-size: 18px; line-height: 1; cursor: pointer;
+        display: flex; align-items: center; justify-content: center; padding: 0;
+      }
+      .pt-promo-dismiss:hover { background: rgba(26, 21, 5, 0.35); }
+    `;
+    document.head.appendChild(style);
+  }
+
   const active = document.body.dataset.page;
   const title = document.body.dataset.title || "Dashboard";
   const noWrap = document.body.dataset.noWrap === "true";
