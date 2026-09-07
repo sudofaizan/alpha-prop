@@ -76,51 +76,66 @@
     });
   }
 
-  function priceDrift(mid) {
-    if (barBuffer.length < 10) return false;
-    const lastClose = barBuffer[barBuffer.length - 1].close;
-    if (!lastClose || !mid) return false;
-    return Math.abs(mid - lastClose) / mid > 0.05;
+  let chartResizeObserver = null;
+  let liveBarQueued = false;
+  let chartSource = "none";
+
+  function chartBodyEl(container) {
+    return container?.closest(".trade-chart-body") || container?.parentElement;
   }
 
-  function mergeLiveTick(tick) {
-    if (!tick || !series) return;
+  function measureChart(container) {
+    const body = chartBodyEl(container);
+    const w = Math.max(body?.clientWidth || container?.clientWidth || 320, 200);
+    const h = Math.max(body?.clientHeight || 360, 280);
+    return { w, h };
+  }
+
+  function applyChartSize(container) {
+    if (!chart || !container) return;
+    const { w, h } = measureChart(container);
+    chart.applyOptions({ width: w, height: h });
+  }
+
+  function patchFormingBar(tick) {
+    if (!tick || !series || !barBuffer.length) return;
     const bid = Number(tick.bid);
     const ask = Number(tick.ask);
     const mid = anchorFromTick(tick);
     const bucket = barBucket(tickTimeMs(tick), activeTimeframe);
     const last = barBuffer[barBuffer.length - 1];
-    if (last && last.time === bucket) {
+    if (!last) return;
+
+    if (bucket === last.time) {
       last.high = Math.max(last.high, ask, mid);
       last.low = Math.min(last.low, bid, mid);
       last.close = mid;
       series.update({ ...last });
-    } else if (!last || last.time < bucket) {
+      return;
+    }
+
+    const step = tfStep(activeTimeframe);
+    if (bucket > last.time && bucket - last.time === step) {
       const bar = { time: bucket, open: mid, high: ask, low: bid, close: mid };
       barBuffer.push(bar);
       series.update(bar);
     }
   }
 
-  function updateLiveBar(tick) {
-    const bid = Number(tick.bid);
-    const ask = Number(tick.ask);
-    const mid = anchorFromTick(tick);
-    const bucket = barBucket(tickTimeMs(tick), activeTimeframe);
-    const last = barBuffer[barBuffer.length - 1];
-    if (!last || last.time < bucket) {
-      const bar = { time: bucket, open: mid, high: ask, low: bid, close: mid };
-      barBuffer.push(bar);
-      series.update(bar);
-    } else if (last.time === bucket) {
-      last.high = Math.max(last.high, ask, mid);
-      last.low = Math.min(last.low, bid, mid);
-      last.close = mid;
-      series.update({ ...last });
-    }
+  function queueLiveBarUpdate(tick) {
+    if (liveBarQueued) return;
+    liveBarQueued = true;
+    requestAnimationFrame(() => {
+      liveBarQueued = false;
+      patchFormingBar(tick);
+    });
   }
 
   function destroyChart() {
+    if (chartResizeObserver) {
+      chartResizeObserver.disconnect();
+      chartResizeObserver = null;
+    }
     if (chart) {
       try {
         chart.remove();
@@ -168,20 +183,15 @@
         wickDownColor: "#ef4444",
       });
       applyTimeScaleOptions();
-      const resize = () => {
-        if (!chart || !container.isConnected) return;
-        const w = Math.max(container.clientWidth, 320);
-        const h = Math.max(container.clientHeight, 420);
-        chart.applyOptions({ width: w, height: h });
-      };
-      new ResizeObserver(resize).observe(container);
+      const body = chartBodyEl(container);
+      const resize = () => applyChartSize(container);
+      if (chartResizeObserver) chartResizeObserver.disconnect();
+      chartResizeObserver = new ResizeObserver(resize);
+      if (body) chartResizeObserver.observe(body);
       resize();
     } else {
-      const w = Math.max(container.clientWidth, 320);
-      const h = Math.max(container.clientHeight, 420);
+      applyChartSize(container);
       chart.applyOptions({
-        width: w,
-        height: h,
         crosshair: {
           mode: window.LightweightCharts.CrosshairMode.Normal,
           vertLine: {
@@ -360,13 +370,19 @@
     if (sym === activeSymbol) updateTicket(tick);
   }
 
+  function updateChartBadge(symbol) {
+    const badge = document.getElementById("trade-chart-badge");
+    if (!badge || !barBuffer.length) return;
+    const src = chartSource === "mt5" ? "MT5" : chartSource === "synthetic" ? "Demo" : "Live";
+    badge.textContent = `${src} | ${symbol} · ${tfLabel(activeTimeframe)} · ${barBuffer.length} bars`;
+  }
+
   function updateTicket(tick) {
     const sell = document.getElementById("trade-sell-px");
     const buy = document.getElementById("trade-buy-px");
-    const badge = document.getElementById("trade-chart-badge");
     if (sell) sell.textContent = fmtPrice(tick.symbol, tick.bid);
     if (buy) buy.textContent = fmtPrice(tick.symbol, tick.ask);
-    if (badge) badge.textContent = `Live | ${tick.symbol}`;
+    if (tick.symbol === activeSymbol) updateChartBadge(tick.symbol);
   }
 
   function mapAccountMetrics(account) {
@@ -492,12 +508,8 @@
 
   function resizeChartSoon() {
     const container = document.getElementById("trade-chart");
-    if (!chart || !container) return;
-    requestAnimationFrame(() => {
-      const w = Math.max(container.clientWidth, 320);
-      const h = Math.max(container.clientHeight, 420);
-      chart.applyOptions({ width: w, height: h });
-    });
+    if (!container) return;
+    requestAnimationFrame(() => applyChartSize(container));
   }
 
   function bindWatchlistToggle() {
@@ -618,13 +630,14 @@
       if (!nextBars.length) return;
 
       barBuffer = nextBars;
+      chartSource = hist.source || "none";
       ensureChart(container);
       series.setData(barBuffer);
-      mergeLiveTick(tick);
+      patchFormingBar(tick);
       chart.timeScale().fitContent();
       applyTimeScaleOptions();
-      const src = hist.source === "mt5" ? "MT5" : hist.source === "synthetic" ? "Demo" : "Live";
-      if (badge) badge.textContent = `${src} | ${symbol} · ${tfLabel(activeTimeframe)} · ${barBuffer.length} bars`;
+      applyChartSize(container);
+      updateChartBadge(symbol);
     } catch (e) {
       console.error("loadChart failed:", e);
     } finally {
@@ -637,28 +650,17 @@
     if (tick.symbol !== activeSymbol) return;
 
     const container = document.getElementById("trade-chart");
-    if (!container) return;
-    if (chart && chartMount !== container) {
-      destroyChart();
-    }
-    if (!series) {
+    if (!container || !series) {
       if (!chartLoading && !loadChartPromise) await loadChart(activeSymbol);
       return;
     }
-
-    const mid = anchorFromTick(tick);
 
     if (barBuffer.length === 0) {
       if (!chartLoading && !loadChartPromise) await loadChart(activeSymbol);
       return;
     }
 
-    if (priceDrift(mid)) {
-      if (!chartLoading && !loadChartPromise) await loadChart(activeSymbol);
-      return;
-    }
-
-    updateLiveBar(tick);
+    queueLiveBarUpdate(tick);
   }
 
   async function init() {

@@ -15,6 +15,7 @@
   flex-direction: column;
   gap: 0;
   min-height: calc(100vh - 120px);
+  max-height: calc(100vh - 100px);
   margin: -8px -12px 0;
   background: var(--trade-bg);
   border: 1px solid var(--trade-line);
@@ -120,7 +121,10 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) 280px;
   min-height: 480px;
+  max-height: calc(100vh - 180px);
   flex: 1;
+  align-items: stretch;
+  overflow: hidden;
 }
 
 .trade-watchlist-panel {
@@ -243,12 +247,17 @@
 .trade-chart-wrap {
   position: relative;
   background: #0f0f14;
-  min-height: 400px;
+  min-height: 420px;
+  height: 100%;
+  max-height: calc(100vh - 200px);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .trade-chart-toolbar {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -261,7 +270,7 @@
 .trade-timeframes {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
 }
 
 .trade-tf-btn {
@@ -275,6 +284,7 @@
   border-radius: 4px;
   cursor: pointer;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .trade-tf-btn:hover {
@@ -288,15 +298,23 @@
   background: rgba(201, 162, 39, 0.1);
 }
 
+.trade-chart-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
 #trade-chart {
-  flex: 1;
+  position: absolute;
+  inset: 0;
   width: 100%;
-  min-height: 360px;
+  height: 100%;
 }
 
 .trade-chart-badge {
   position: absolute;
-  top: 52px;
+  top: 10px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
