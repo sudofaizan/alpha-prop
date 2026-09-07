@@ -15,6 +15,7 @@
   }
 
   function timeAgo(iso) {
+    if (window.AlphaFXTime) return window.AlphaFXTime.formatTimeAgo(iso);
     if (!iso) return "";
     const diff = Date.now() - new Date(iso).getTime();
     const mins = Math.floor(diff / 60000);
@@ -33,7 +34,9 @@
 
   function formatDate(iso) {
     if (!iso) return "—";
-    return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    const d = window.AlphaFXTime ? window.AlphaFXTime.parseUtc(iso) : new Date(iso);
+    if (!d || Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   }
 
   function tabBadge(count, active) {
@@ -253,7 +256,8 @@
         return;
       }
       const rows = data.items.map((o) => {
-        const date = new Date(o.created_at).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        const created = window.AlphaFXTime ? window.AlphaFXTime.parseUtc(o.created_at) : new Date(o.created_at);
+        const date = created.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
         const discount = o.base_amount > o.amount ? `<span style="text-decoration:line-through;color:var(--text-mute);margin-right:6px;">${money(o.base_amount)}</span>` : "";
         return `<tr>
           <td>${date}</td>

@@ -6,6 +6,7 @@ from app.dependencies import get_current_user
 from app.models import User
 from app.services.billing import billing_summary
 from app.services.notifications import list_notifications, mark_all_read, unread_count
+from app.utils.time_format import utc_iso
 
 router = APIRouter(tags=["billing-notifications"])
 
@@ -32,7 +33,7 @@ def get_notifications(user: User = Depends(get_current_user), db: Session = Depe
                 "title": n.title,
                 "body": n.body,
                 "is_read": n.is_read,
-                "created_at": n.created_at.isoformat() if n.created_at else "",
+                "created_at": utc_iso(n.created_at),
             }
         )
     return {"items": items, "counts": counts}
