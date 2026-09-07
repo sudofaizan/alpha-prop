@@ -136,6 +136,7 @@
   }
 
   function destroyChart() {
+    window.AlphaFXChartPositions?.detach?.();
     if (chartResizeObserver) {
       chartResizeObserver.disconnect();
       chartResizeObserver = null;
@@ -193,8 +194,10 @@
       chartResizeObserver = new ResizeObserver(resize);
       if (body) chartResizeObserver.observe(body);
       resize();
+      bindChartPositions(container);
     } else {
       applyChartSize(container);
+      bindChartPositions(container);
       chart.applyOptions({
         crosshair: {
           mode: window.LightweightCharts.CrosshairMode.Normal,
@@ -214,6 +217,33 @@
       });
     }
     return series;
+  }
+
+  function chartPositionsContext() {
+    return {
+      activeSymbol,
+      open: tradeSnapshot.open || [],
+      accountId,
+      symbolMeta,
+      fmtPrice,
+      barBuffer,
+      fallbackTime: () => barBuffer[barBuffer.length - 1]?.time,
+    };
+  }
+
+  function bindChartPositions(container) {
+    if (!window.AlphaFXChartPositions || !chart || !series) return;
+    window.AlphaFXChartPositions.attach({
+      chart,
+      series,
+      container,
+      getContext: chartPositionsContext,
+    });
+  }
+
+  function syncChartPositions() {
+    if (!window.AlphaFXChartPositions || !series) return;
+    window.AlphaFXChartPositions.sync();
   }
 
   const money = (n) =>
@@ -491,6 +521,7 @@
           cell.classList.toggle("negative", pnl < 0);
         }
       }
+      window.AlphaFXChartPositions?.updateLivePnl?.();
     });
   }
 
@@ -597,6 +628,7 @@
       renderAccountSelect(tradeSnapshot.accounts || [], accountId);
       syncPositionQuoteSubscriptions();
       refreshLiveMetrics();
+      syncChartPositions();
       updateBottomCounts();
       renderBottomPanel();
     } catch (e) {
@@ -807,6 +839,7 @@
       applyTimeScaleOptions();
       applyChartSize(container);
       updateChartBadge(symbol);
+      syncChartPositions();
     } catch (e) {
       console.error("loadChart failed:", e);
     } finally {

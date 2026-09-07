@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User
-from app.schemas.trade import ClosePositionRequest, OrderResponse, PlaceOrderRequest
+from app.schemas.trade import ClosePositionRequest, OrderResponse, PlaceOrderRequest, UpdateStopsRequest
 from app.services.accounts import account_to_summary, dashboard_for_user, get_account, list_user_accounts
 from app.services import sim_engine
 
@@ -107,6 +107,28 @@ def close_position(
     """Close an open simulated position."""
     trade = sim_engine.close_position(db, user.id, body.account_id, trade_id)
     return OrderResponse(trade_id=trade.id, message=f"Closed position #{trade.id} · P/L ${trade.pnl:.2f}")
+
+
+@router.patch("/positions/{trade_id}/stops", response_model=OrderResponse)
+def update_position_stops(
+    trade_id: int,
+    body: UpdateStopsRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update stop loss / take profit on an open simulated position."""
+    fields = body.model_fields_set
+    trade = sim_engine.update_position_stops(
+        db,
+        user.id,
+        body.account_id,
+        trade_id,
+        body.stop_loss,
+        body.take_profit,
+        set_stop_loss="stop_loss" in fields,
+        set_take_profit="take_profit" in fields,
+    )
+    return OrderResponse(trade_id=trade.id, message="Stop levels updated")
 
 
 @router.get("/positions")

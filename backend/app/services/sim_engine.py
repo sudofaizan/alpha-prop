@@ -118,6 +118,9 @@ def refresh_account_metrics(db: Session, account: ChallengeAccount) -> Challenge
 
 def trade_row(trade: SimTrade, *, live_pnl: float | None = None) -> dict:
     pnl = live_pnl if live_pnl is not None else trade.pnl
+    opened_time = None
+    if trade.opened_at:
+        opened_time = int(trade.opened_at.timestamp())
     return {
         "id": trade.id,
         "symbol": trade.symbol,
@@ -126,6 +129,7 @@ def trade_row(trade: SimTrade, *, live_pnl: float | None = None) -> dict:
         "entry": _round_price(trade.symbol, trade.entry_price),
         "exit": _round_price(trade.symbol, trade.exit_price) if trade.exit_price is not None else None,
         "opened": _fmt_dt(trade.opened_at),
+        "opened_time": opened_time,
         "closed": _fmt_dt(trade.closed_at),
         "pnl": pnl,
         "reason": trade.close_reason or ("open" if trade.status == "open" else "—"),
@@ -271,6 +275,57 @@ def close_position(
     refresh_account_metrics(db, account)
     _update_trade_stats(db, account)
     db.commit()
+    return trade
+
+
+def update_position_stops(
+    db: Session,
+    user_id: int,
+    account_id: int,
+    trade_id: int,
+    stop_loss: float | None = None,
+    take_profit: float | None = None,
+    *,
+    set_stop_loss: bool = True,
+    set_take_profit: bool = True,
+) -> SimTrade:
+    account = _require_account(db, user_id, account_id)
+    trade = (
+        db.query(SimTrade)
+        .filter(SimTrade.id == trade_id, SimTrade.account_id == account.id, SimTrade.status == "open")
+        .one_or_none()
+    )
+    if not trade:
+        raise HTTPException(status_code=404, detail="Open position not found")
+
+    entry = float(trade.entry_price)
+    side = trade.side.upper()
+
+    if set_stop_loss:
+        if stop_loss is not None:
+            sl = float(stop_loss)
+            if side == "BUY" and sl >= entry:
+                raise HTTPException(status_code=400, detail="Stop loss for BUY must be below entry")
+            if side == "SELL" and sl <= entry:
+                raise HTTPException(status_code=400, detail="Stop loss for SELL must be above entry")
+            trade.stop_loss = _round_price(trade.symbol, sl)
+        else:
+            trade.stop_loss = None
+
+    if set_take_profit:
+        if take_profit is not None:
+            tp = float(take_profit)
+            if side == "BUY" and tp <= entry:
+                raise HTTPException(status_code=400, detail="Take profit for BUY must be above entry")
+            if side == "SELL" and tp >= entry:
+                raise HTTPException(status_code=400, detail="Take profit for SELL must be below entry")
+            trade.take_profit = _round_price(trade.symbol, tp)
+        else:
+            trade.take_profit = None
+
+    db.add(trade)
+    db.commit()
+    db.refresh(trade)
     return trade
 
 

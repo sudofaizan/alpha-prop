@@ -14,6 +14,12 @@ class ClosePositionRequest(BaseModel):
     account_id: int
 
 
+class UpdateStopsRequest(BaseModel):
+    account_id: int
+    stop_loss: float | None = None
+    take_profit: float | None = None
+
+
 class OrderResponse(BaseModel):
     ok: bool = True
     trade_id: int
