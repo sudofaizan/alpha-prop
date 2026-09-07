@@ -21,6 +21,9 @@
   let initialized = false;
   let accountPollTimer = null;
   let chartLoading = false;
+  let chartMount = null;
+  let loadChartPromise = null;
+  let layoutReady = false;
 
   function tickTimeMs(tick) {
     let t = Number(tick?.time_ms) || Date.now();
@@ -42,35 +45,87 @@
 
   function mergeLiveTick(tick) {
     if (!tick || !series) return;
+    const bid = Number(tick.bid);
+    const ask = Number(tick.ask);
     const mid = anchorFromTick(tick);
     const bucket = minuteBucket(tickTimeMs(tick));
     const last = barBuffer[barBuffer.length - 1];
     if (last && last.time === bucket) {
-      last.high = Math.max(last.high, mid);
-      last.low = Math.min(last.low, mid);
+      last.high = Math.max(last.high, ask, mid);
+      last.low = Math.min(last.low, bid, mid);
       last.close = mid;
       series.update({ ...last });
     } else if (!last || last.time < bucket) {
-      const bar = { time: bucket, open: mid, high: mid, low: mid, close: mid };
+      const bar = { time: bucket, open: mid, high: ask, low: bid, close: mid };
       barBuffer.push(bar);
       series.update(bar);
     }
   }
 
   function updateLiveBar(tick) {
+    const bid = Number(tick.bid);
+    const ask = Number(tick.ask);
     const mid = anchorFromTick(tick);
     const bucket = minuteBucket(tickTimeMs(tick));
     const last = barBuffer[barBuffer.length - 1];
     if (!last || last.time < bucket) {
-      const bar = { time: bucket, open: mid, high: mid, low: mid, close: mid };
+      const bar = { time: bucket, open: mid, high: ask, low: bid, close: mid };
       barBuffer.push(bar);
       series.update(bar);
     } else if (last.time === bucket) {
-      last.high = Math.max(last.high, mid);
-      last.low = Math.min(last.low, mid);
+      last.high = Math.max(last.high, ask, mid);
+      last.low = Math.min(last.low, bid, mid);
       last.close = mid;
       series.update({ ...last });
     }
+  }
+
+  function destroyChart() {
+    if (chart) {
+      try {
+        chart.remove();
+      } catch {
+        /* ignore */
+      }
+    }
+    chart = null;
+    series = null;
+    chartMount = null;
+  }
+
+  function ensureChart(container) {
+    if (chart && chartMount !== container) {
+      destroyChart();
+    }
+    if (!chart) {
+      chartMount = container;
+      chart = window.LightweightCharts.createChart(container, {
+        layout: { background: { color: "#0f0f14" }, textColor: "#a1a1aa" },
+        grid: { vertLines: { color: "#1f1f28" }, horzLines: { color: "#1f1f28" } },
+        timeScale: { timeVisible: true, secondsVisible: false },
+        rightPriceScale: { borderColor: "#27272a" },
+      });
+      series = chart.addCandlestickSeries({
+        upColor: "#22c55e",
+        downColor: "#ef4444",
+        borderVisible: false,
+        wickUpColor: "#22c55e",
+        wickDownColor: "#ef4444",
+      });
+      const resize = () => {
+        if (!chart || !container.isConnected) return;
+        const w = Math.max(container.clientWidth, 320);
+        const h = Math.max(container.clientHeight, 420);
+        chart.applyOptions({ width: w, height: h });
+      };
+      new ResizeObserver(resize).observe(container);
+      resize();
+    } else {
+      const w = Math.max(container.clientWidth, 320);
+      const h = Math.max(container.clientHeight, 420);
+      chart.applyOptions({ width: w, height: h });
+    }
+    return series;
   }
 
   const money = (n) =>
@@ -365,84 +420,80 @@
   }
 
   async function loadChart(symbol) {
+    if (loadChartPromise) return loadChartPromise;
+    loadChartPromise = loadChartInner(symbol).finally(() => {
+      loadChartPromise = null;
+    });
+    return loadChartPromise;
+  }
+
+  async function loadChartInner(symbol) {
     const container = document.getElementById("trade-chart");
     if (!container || !window.LightweightCharts) return;
 
-    if (!chart) {
-      chart = window.LightweightCharts.createChart(container, {
-        layout: { background: { color: "#0f0f14" }, textColor: "#a1a1aa" },
-        grid: { vertLines: { color: "#1f1f28" }, horzLines: { color: "#1f1f28" } },
-        timeScale: { timeVisible: true, secondsVisible: false },
-        rightPriceScale: { borderColor: "#27272a" },
-      });
-      series = chart.addCandlestickSeries({
-        upColor: "#22c55e",
-        downColor: "#ef4444",
-        borderVisible: false,
-        wickUpColor: "#22c55e",
-        wickDownColor: "#ef4444",
-      });
-      const resize = () => {
-        chart.applyOptions({ width: container.clientWidth, height: Math.max(container.clientHeight, 420) });
-      };
-      new ResizeObserver(resize).observe(container);
-      resize();
-    }
-
-    const tick = window.AlphaFXQuotes?.getLast(symbol) || (await waitForQuote(symbol, 8000));
-    const anchor = anchorFromTick(tick);
-    const badge = document.getElementById("trade-chart-badge");
-
-    if (anchor == null) {
-      barBuffer = [];
-      series.setData([]);
-      if (badge) badge.textContent = `Waiting for live | ${symbol}`;
-      return;
-    }
-
-    barBuffer = [];
+    chartLoading = true;
     try {
+      ensureChart(container);
+
+      const tick = window.AlphaFXQuotes?.getLast(symbol) || (await waitForQuote(symbol, 8000));
+      const anchor = anchorFromTick(tick);
+      const badge = document.getElementById("trade-chart-badge");
+
+      if (anchor == null) {
+        barBuffer = [];
+        series.setData([]);
+        if (badge) badge.textContent = `Waiting for live | ${symbol}`;
+        return;
+      }
+
       const hist = await window.AlphaFXApi.request(
         `/api/v1/market/history?symbol=${encodeURIComponent(symbol)}&timeframe=M1&limit=240&anchor=${encodeURIComponent(anchor)}`
       );
-      barBuffer = (hist.bars || []).map((b) => ({
-        time: b.time,
+      const nextBars = (hist.bars || []).map((b) => ({
+        time: Math.floor(b.time),
         open: b.open,
         high: b.high,
         low: b.low,
         close: b.close,
       }));
+      if (!nextBars.length) return;
+
+      barBuffer = nextBars;
+      ensureChart(container);
       series.setData(barBuffer);
       mergeLiveTick(tick);
       chart.timeScale().fitContent();
-      chart.timeScale().scrollToRealTime();
-      if (badge) badge.textContent = `Live | ${symbol}`;
+      if (badge) badge.textContent = `Live | ${symbol} · ${barBuffer.length} bars`;
     } catch (e) {
-      console.error(e);
+      console.error("loadChart failed:", e);
+    } finally {
+      chartLoading = false;
     }
   }
 
   async function onTick(tick) {
     updateWatchlistPrice(tick);
-    if (!series || tick.symbol !== activeSymbol) return;
+    if (tick.symbol !== activeSymbol) return;
+
+    const container = document.getElementById("trade-chart");
+    if (!container) return;
+    if (chart && chartMount !== container) {
+      destroyChart();
+    }
+    if (!series) {
+      if (!chartLoading && !loadChartPromise) await loadChart(activeSymbol);
+      return;
+    }
 
     const mid = anchorFromTick(tick);
 
     if (barBuffer.length === 0) {
-      if (!chartLoading) {
-        chartLoading = true;
-        await loadChart(activeSymbol);
-        chartLoading = false;
-      }
+      if (!chartLoading && !loadChartPromise) await loadChart(activeSymbol);
       return;
     }
 
     if (priceDrift(mid)) {
-      if (!chartLoading) {
-        chartLoading = true;
-        await loadChart(activeSymbol);
-        chartLoading = false;
-      }
+      if (!chartLoading && !loadChartPromise) await loadChart(activeSymbol);
       return;
     }
 
@@ -450,7 +501,8 @@
   }
 
   async function init() {
-    if (document.body.dataset.page !== "trade" || initialized) return;
+    if (document.body.dataset.page !== "trade" || initialized || !layoutReady) return;
+    if (!window.AlphaFXApi?.getToken?.()) return;
     initialized = true;
 
     bindBottomTabs();
@@ -469,8 +521,21 @@
     accountPollTimer = setInterval(loadTradeSnapshot, 8000);
   }
 
-  window.addEventListener("alphafx:user", init);
-  if (window.AlphaFXApi?.getToken?.()) init();
+  function bootTrade() {
+    if (document.body.dataset.page !== "trade" || initialized) return;
+    if (!layoutReady || !window.AlphaFXApi?.getToken?.()) return;
+    init();
+  }
+
+  window.addEventListener("alphafx:layout-ready", () => {
+    layoutReady = true;
+    bootTrade();
+  });
+  window.addEventListener("alphafx:user", bootTrade);
+  if (document.querySelector("[data-portal]")) {
+    layoutReady = true;
+    bootTrade();
+  }
 
   window.addEventListener("beforeunload", () => {
     if (accountPollTimer) clearInterval(accountPollTimer);

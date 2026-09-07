@@ -72,16 +72,18 @@ def market_history(
         bars[-1]["high"] = round(max(bars[-1]["high"], end_price), digits)
         bars[-1]["low"] = round(min(bars[-1]["low"], end_price), digits)
 
-    # Current in-progress minute candle (OHLC = live mid)
+    # Current in-progress minute candle (seed with bid/ask spread around anchor)
     current_bucket = (now // step) * step
+    spread = vol * 0.2
+    p = round(end_price, digits)
+    hi = round(end_price + spread, digits)
+    lo = round(max(end_price - spread, 0.0001), digits)
     if not bars or bars[-1]["time"] < current_bucket:
-        p = round(end_price, digits)
-        bars.append({"time": current_bucket, "open": p, "high": p, "low": p, "close": p})
+        bars.append({"time": current_bucket, "open": p, "high": hi, "low": lo, "close": p})
     elif bars[-1]["time"] == current_bucket:
-        p = round(end_price, digits)
         b = bars[-1]
-        b["high"] = round(max(b["high"], p), digits)
-        b["low"] = round(min(b["low"], p), digits)
+        b["high"] = round(max(b["high"], hi), digits)
+        b["low"] = round(min(b["low"], lo), digits)
         b["close"] = p
 
     return {"symbol": sym, "timeframe": timeframe, "anchor": end_price, "bars": bars}
