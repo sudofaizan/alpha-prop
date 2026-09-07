@@ -1,6 +1,7 @@
 /**
- * Open position overlays — Capify-exact entry / SL / TP lines + floating pill.
- * SL/TP always visible; drag to set (even when not saved on trade yet).
+ * Open position overlays — entry / SL / TP lines.
+ * Desktop: Capify-style always-visible SL/TP with drag.
+ * MT5 mobile: entry only until selected; SL/TP via bottom bar + draggable lines with cancel.
  */
 (function () {
   const HIT_PX = 18;
@@ -28,9 +29,15 @@
   let drag = null;
   let rangeSubscribed = false;
   let dragHost = null;
+  let selectedPosId = null;
+  let mt5BarBound = false;
 
   function ctx() {
     return getContext?.() || {};
+  }
+
+  function isMt5Mode() {
+    return !!ctx().isMt5Mobile?.();
   }
 
   function fmtPrice(symbol, value) {
@@ -46,7 +53,6 @@
     return pos.tp != null && pos.tp !== "";
   }
 
-  /** Capify-style default distance from entry when SL/TP not set yet. */
   function defaultDelta(symbol, side, kind) {
     const meta = ctx().symbolMeta?.[symbol];
     const tick = meta?.tick_size || 0.01;
@@ -85,18 +91,10 @@
     return `${sign}$${Math.abs(n).toFixed(2)}`;
   }
 
-  /** User-friendly $ P/L impact on equity if SL/TP is hit at this level. */
   function pnlAtPrice(pos, exitPrice) {
     if (!window.AlphaFXSimPnl?.calcPnl || exitPrice == null) return 0;
     const meta = ctx().symbolMeta?.[pos.symbol];
-    return window.AlphaFXSimPnl.calcPnl(
-      pos.symbol,
-      pos.side,
-      pos.volume,
-      pos.entry,
-      exitPrice,
-      meta
-    );
+    return window.AlphaFXSimPnl.calcPnl(pos.symbol, pos.side, pos.volume, pos.entry, exitPrice, meta);
   }
 
   function fmtTagPnl(pnl) {
@@ -151,18 +149,34 @@
 
   function findHit(y) {
     for (const [id, o] of overlays) {
-      if (hitLine(y, o.slVal)) return { id, kind: "sl" };
-      if (hitLine(y, o.tpVal)) return { id, kind: "tp" };
+      if (isMt5Mode()) {
+        if (hitLine(y, Number(o.pos.entry))) return { id, kind: "entry" };
+      }
+      if (shouldShowSl(o) && hitLine(y, o.slVal)) return { id, kind: "sl" };
+      if (shouldShowTp(o) && hitLine(y, o.tpVal)) return { id, kind: "tp" };
     }
     return null;
   }
 
+  function shouldShowSl(o) {
+    if (!isMt5Mode()) return true;
+    if (selectedPosId !== o.pos.id) return false;
+    return o.slVisible;
+  }
+
+  function shouldShowTp(o) {
+    if (!isMt5Mode()) return true;
+    if (selectedPosId !== o.pos.id) return false;
+    return o.tpVisible;
+  }
+
   function notifyTicket(o) {
+    if (isMt5Mode() && selectedPosId !== o?.pos?.id) return;
     ctx().syncTicketStops?.({
-      sl: o.slVal,
-      tp: o.tpVal,
-      slSaved: o.slSaved,
-      tpSaved: o.tpSaved,
+      sl: o?.slVisible || !isMt5Mode() ? o?.slVal : null,
+      tp: o?.tpVisible || !isMt5Mode() ? o?.tpVal : null,
+      slSaved: o?.slSaved,
+      tpSaved: o?.tpSaved,
       dragging: !!drag,
     });
   }
@@ -178,13 +192,37 @@
     pendingOverlays.delete(id);
   }
 
+  function removeStopOverlay(o, kind) {
+    if (kind === "sl") {
+      try {
+        if (o.slLine) series.removePriceLine(o.slLine);
+      } catch {
+        /* ignore */
+      }
+      o.slLine = null;
+      o.slRow?.remove();
+      o.slRow = null;
+      o.slVisible = false;
+    } else {
+      try {
+        if (o.tpLine) series.removePriceLine(o.tpLine);
+      } catch {
+        /* ignore */
+      }
+      o.tpLine = null;
+      o.tpRow?.remove();
+      o.tpRow = null;
+      o.tpVisible = false;
+    }
+  }
+
   function removeOverlayDom(o) {
     o.entryRow?.remove();
     o.slRow?.remove();
     o.tpRow?.remove();
   }
 
-  function removeOverlay(id) {
+  function stripOverlay(id) {
     const o = overlays.get(id);
     if (!o || !series) return;
     try {
@@ -196,6 +234,12 @@
     }
     removeOverlayDom(o);
     overlays.delete(id);
+  }
+
+  function removeOverlay(id) {
+    const wasSelected = selectedPosId === id;
+    stripOverlay(id);
+    if (wasSelected) deselectPosition(false);
   }
 
   function clear() {
@@ -222,12 +266,30 @@
     });
   }
 
+  function sideLabel(pos) {
+    return String(pos.side || "").toUpperCase();
+  }
+
   function buildEntryPill(pos) {
+    const mt5 = isMt5Mode();
+    const side = sideLabel(pos);
+    const isBuy = side === "BUY";
+    const row = document.createElement("div");
+    row.className = `cpf-pos-row cpf-pos-row--entry${selectedPosId === pos.id ? " is-selected" : ""}`;
+    row.dataset.posId = String(pos.id);
+
+    if (mt5) {
+      row.innerHTML = `<span class="cpf-entry-label cpf-entry-label--${isBuy ? "buy" : "sell"}">${side} ${pos.volume}</span>`;
+      row.style.pointerEvents = "auto";
+      row.addEventListener("click", (e) => {
+        e.stopPropagation();
+        selectPosition(pos.id);
+      });
+      return row;
+    }
+
     const pnl = Number(pos.pnl || 0);
     const pnlCls = pnl > 0 ? "positive" : pnl < 0 ? "negative" : "";
-    const row = document.createElement("div");
-    row.className = "cpf-pos-row cpf-pos-row--entry";
-    row.dataset.posId = String(pos.id);
     row.innerHTML = `
       <div class="cpf-entry-pill">
         <span class="cpf-entry-vol">${pos.volume}</span>
@@ -250,13 +312,56 @@
     row.dataset.kind = kind;
     const pnl = pnlAtPrice(pos, levelPrice);
     const pnlCls = tagPnlClass(pnl);
+    const showCancel = isMt5Mode() || !saved;
     row.innerHTML = `
       <span class="cpf-pos-tag cpf-pos-tag--${kind}">
         <span class="cpf-pos-tag-label">${kind.toUpperCase()}</span>
         <span class="cpf-pos-tag-pnl ${pnlCls}">${fmtTagPnl(pnl)}</span>
+        ${showCancel ? `<button type="button" class="cpf-tag-cancel" data-cancel-stop="${kind}" aria-label="Remove ${kind.toUpperCase()}">×</button>` : ""}
       </span>
     `;
+    row.querySelector("[data-cancel-stop]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const o = overlays.get(pos.id);
+      if (o) cancelStop(o, kind);
+    });
     return row;
+  }
+
+  function ensureStopOverlay(o, kind) {
+    const isSl = kind === "sl";
+    if (isSl && o.slLine) return;
+    if (!isSl && o.tpLine) return;
+
+    if (isSl) {
+      o.slVal = o.slSaved ? Number(o.pos.sl) : defaultSl(o.pos);
+      o.slLine = createLine(o.slVal, COLORS.sl, o.slSaved, COLORS.slAxis, COLORS.slText);
+      o.slRow = buildTag("sl", o.pos, o.slVal, o.slSaved);
+      overlayRoot?.appendChild(o.slRow);
+    } else {
+      o.tpVal = o.tpSaved ? Number(o.pos.tp) : defaultTp(o.pos);
+      o.tpLine = createLine(o.tpVal, COLORS.tp, o.tpSaved, COLORS.tpAxis, COLORS.tpText);
+      o.tpRow = buildTag("tp", o.pos, o.tpVal, o.tpSaved);
+      overlayRoot?.appendChild(o.tpRow);
+    }
+  }
+
+  function refreshStopVisibility(o) {
+    if (shouldShowSl(o)) {
+      if (!o.slLine) ensureStopOverlay(o, "sl");
+      o.slRow?.classList.toggle("is-draft", !o.slSaved);
+      o.slLine?.applyOptions({ price: o.slVal, lineStyle: lineStyle(o.slSaved) });
+    } else {
+      removeStopOverlay(o, "sl");
+    }
+
+    if (shouldShowTp(o)) {
+      if (!o.tpLine) ensureStopOverlay(o, "tp");
+      o.tpRow?.classList.toggle("is-draft", !o.tpSaved);
+      o.tpLine?.applyOptions({ price: o.tpVal, lineStyle: lineStyle(o.tpSaved) });
+    } else {
+      removeStopOverlay(o, "tp");
+    }
   }
 
   function layoutOverlay(o) {
@@ -264,11 +369,12 @@
     if (entryY != null && o.entryRow) {
       o.entryRow.style.top = `${entryY}px`;
       o.entryRow.style.display = "";
+      o.entryRow.classList.toggle("is-selected", selectedPosId === o.pos.id);
     } else if (o.entryRow) {
       o.entryRow.style.display = "none";
     }
 
-    const slY = priceY(o.slVal);
+    const slY = shouldShowSl(o) ? priceY(o.slVal) : null;
     if (slY != null && o.slRow) {
       o.slRow.style.top = `${slY}px`;
       o.slRow.style.display = "";
@@ -276,7 +382,7 @@
       o.slRow.style.display = "none";
     }
 
-    const tpY = priceY(o.tpVal);
+    const tpY = shouldShowTp(o) ? priceY(o.tpVal) : null;
     if (tpY != null && o.tpRow) {
       o.tpRow.style.top = `${tpY}px`;
       o.tpRow.style.display = "";
@@ -296,39 +402,179 @@
     chart.timeScale().subscribeVisibleLogicalRangeChange(() => layoutAll());
   }
 
+  function updateMt5PosBar(pos) {
+    const bar = document.getElementById("mt5-pos-bar");
+    if (!bar) return;
+    if (!pos || !isMt5Mode()) {
+      bar.hidden = true;
+      bar.setAttribute("aria-hidden", "true");
+      document.body.classList.remove("mt5-pos-active");
+      return;
+    }
+    bar.hidden = false;
+    bar.setAttribute("aria-hidden", "false");
+    document.body.classList.add("mt5-pos-active");
+    const side = sideLabel(pos).toLowerCase();
+    const text = document.getElementById("mt5-pos-close-text");
+    const vol = document.getElementById("mt5-pos-close-vol");
+    const slBtn = document.getElementById("mt5-pos-sl");
+    const tpBtn = document.getElementById("mt5-pos-tp");
+    if (text) text.textContent = `Close ${side}`;
+    if (vol) vol.textContent = String(pos.volume);
+    const o = overlays.get(pos.id);
+    slBtn?.classList.toggle("is-active", !!o?.slVisible);
+    tpBtn?.classList.toggle("is-active", !!o?.tpVisible);
+  }
+
+  function selectPosition(id) {
+    if (!isMt5Mode()) return;
+    const prev = selectedPosId;
+    selectedPosId = id;
+    const o = overlays.get(id);
+    if (!o) return;
+
+    if (prev && prev !== id) {
+      const prevO = overlays.get(prev);
+      if (prevO) {
+        if (!prevO.slSaved) prevO.slVisible = false;
+        if (!prevO.tpSaved) prevO.tpVisible = false;
+        refreshStopVisibility(prevO);
+        layoutOverlay(prevO);
+      }
+    }
+
+    if (o.slSaved) o.slVisible = true;
+    if (o.tpSaved) o.tpVisible = true;
+    refreshStopVisibility(o);
+    layoutOverlay(o);
+    updateMt5PosBar(o.pos);
+    notifyTicket(o);
+  }
+
+  function deselectPosition(clearBar = true) {
+    if (!selectedPosId) return;
+    const o = overlays.get(selectedPosId);
+    if (o) {
+      o.slVisible = false;
+      o.tpVisible = false;
+      removeStopOverlay(o, "sl");
+      removeStopOverlay(o, "tp");
+      o.entryRow?.classList.remove("is-selected");
+      layoutOverlay(o);
+    }
+    selectedPosId = null;
+    if (clearBar) updateMt5PosBar(null);
+    ctx().syncTicketStops?.({ sl: null, tp: null, slSaved: false, tpSaved: false, dragging: false });
+  }
+
+  function showStopEditor(kind) {
+    if (!selectedPosId) return;
+    const o = overlays.get(selectedPosId);
+    if (!o) return;
+    if (kind === "sl") o.slVisible = true;
+    else o.tpVisible = true;
+    refreshStopVisibility(o);
+    layoutOverlay(o);
+    updateMt5PosBar(o.pos);
+    notifyTicket(o);
+  }
+
+  async function cancelStop(o, kind) {
+    const isSl = kind === "sl";
+    try {
+      if (isSl && o.slSaved) {
+        await clearStopOnServer(o.pos.id, kind);
+        o.slSaved = false;
+        o.pos.sl = null;
+        const open = ctx().open || [];
+        const row = open.find((p) => p.id === o.pos.id);
+        if (row) row.sl = null;
+      } else if (!isSl && o.tpSaved) {
+        await clearStopOnServer(o.pos.id, kind);
+        o.tpSaved = false;
+        o.pos.tp = null;
+        const open = ctx().open || [];
+        const row = open.find((p) => p.id === o.pos.id);
+        if (row) row.tp = null;
+      }
+      removeStopOverlay(o, kind);
+      layoutOverlay(o);
+      updateMt5PosBar(o.pos);
+      notifyTicket(o);
+      window.AlphaFXToast?.show(`${kind.toUpperCase()} removed`, "success");
+    } catch (e) {
+      window.AlphaFXToast?.show(e?.message || "Could not remove stop", "error");
+    }
+  }
+
+  async function clearStopOnServer(id, kind) {
+    const accountId = ctx().accountId;
+    if (!accountId || !window.AlphaFXApi) return;
+    const body = { account_id: accountId };
+    if (kind === "sl") body.stop_loss = null;
+    else body.take_profit = null;
+    await window.AlphaFXApi.request(`/api/v1/trade/positions/${id}/stops`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  }
+
   function upsertOverlay(pos) {
     if (!series || !overlayRoot) return;
-    removeOverlay(pos.id);
+
+    const prev = overlays.get(pos.id);
+    const prevState = prev
+      ? { slVisible: prev.slVisible, tpVisible: prev.tpVisible, selected: selectedPosId === pos.id }
+      : null;
+
+    stripOverlay(pos.id);
 
     const entry = Number(pos.entry);
-    const sl = slPrice(pos);
-    const tp = tpPrice(pos);
     const slSaved = hasSl(pos);
     const tpSaved = hasTp(pos);
+    const mt5 = isMt5Mode();
 
     const entryLine = createLine(entry, COLORS.entry, true, COLORS.entryAxis, COLORS.entryText);
-    const slLine = createLine(sl, COLORS.sl, slSaved, COLORS.slAxis, COLORS.slText);
-    const tpLine = createLine(tp, COLORS.tp, tpSaved, COLORS.tpAxis, COLORS.tpText);
-
     const entryRow = buildEntryPill(pos);
-    const slRow = buildTag("sl", pos, sl, slSaved);
-    const tpRow = buildTag("tp", pos, tp, tpSaved);
-    overlayRoot.append(entryRow, slRow, tpRow);
+    overlayRoot.append(entryRow);
 
     const record = {
       pos,
       entryLine,
-      slLine,
-      tpLine,
-      slVal: sl,
-      tpVal: tp,
+      slLine: null,
+      tpLine: null,
+      slVal: slSaved ? Number(pos.sl) : defaultSl(pos),
+      tpVal: tpSaved ? Number(pos.tp) : defaultTp(pos),
       slSaved,
       tpSaved,
+      slVisible: mt5 ? false : true,
+      tpVisible: mt5 ? false : true,
       entryRow,
-      slRow,
-      tpRow,
+      slRow: null,
+      tpRow: null,
     };
+
+    if (prevState) {
+      record.slVisible = prevState.slVisible;
+      record.tpVisible = prevState.tpVisible;
+    }
+
     overlays.set(pos.id, record);
+
+    if (!mt5) {
+      record.slLine = createLine(record.slVal, COLORS.sl, slSaved, COLORS.slAxis, COLORS.slText);
+      record.tpLine = createLine(record.tpVal, COLORS.tp, tpSaved, COLORS.tpAxis, COLORS.tpText);
+      record.slRow = buildTag("sl", pos, record.slVal, slSaved);
+      record.tpRow = buildTag("tp", pos, record.tpVal, tpSaved);
+      overlayRoot.append(record.slRow, record.tpRow);
+    } else if (prevState?.selected) {
+      selectedPosId = pos.id;
+      if (slSaved) record.slVisible = true;
+      if (tpSaved) record.tpVisible = true;
+      refreshStopVisibility(record);
+      updateMt5PosBar(pos);
+    }
+
     layoutOverlay(record);
     notifyTicket(record);
   }
@@ -353,15 +599,57 @@
   }
 
   function sync() {
-    clear();
+    const prevSelected = selectedPosId;
+    const prevVis = new Map();
+    for (const [id, o] of overlays) {
+      prevVis.set(id, { slVisible: o.slVisible, tpVisible: o.tpVisible });
+    }
+
+    for (const id of [...overlays.keys()]) {
+      const o = overlays.get(id);
+      if (!o) continue;
+      try {
+        if (o.entryLine) series.removePriceLine(o.entryLine);
+        if (o.slLine) series.removePriceLine(o.slLine);
+        if (o.tpLine) series.removePriceLine(o.tpLine);
+      } catch {
+        /* ignore */
+      }
+      removeOverlayDom(o);
+      overlays.delete(id);
+    }
+    drag = null;
+    if (overlayRoot) overlayRoot.innerHTML = "";
+
     if (!series || !chart) return;
 
     const { activeSymbol, open = [], pending = [] } = ctx();
     const positions = open.filter((p) => p.symbol === activeSymbol);
     const pendingOrders = pending.filter((p) => p.symbol === activeSymbol);
-    positions.forEach(upsertOverlay);
+
+    selectedPosId = prevSelected;
+    positions.forEach((pos) => {
+      upsertOverlay(pos);
+      const vis = prevVis.get(pos.id);
+      const o = overlays.get(pos.id);
+      if (o && vis && isMt5Mode() && selectedPosId === pos.id) {
+        o.slVisible = vis.slVisible || o.slSaved;
+        o.tpVisible = vis.tpVisible || o.tpSaved;
+        refreshStopVisibility(o);
+        layoutOverlay(o);
+      }
+    });
+
     pendingOrders.forEach(upsertPendingOverlay);
+
+    if (selectedPosId && !overlays.has(selectedPosId)) {
+      deselectPosition();
+    } else if (selectedPosId && isMt5Mode()) {
+      updateMt5PosBar(overlays.get(selectedPosId)?.pos);
+    }
+
     if (!positions.length) {
+      deselectPosition();
       ctx().syncTicketStops?.({ sl: null, tp: null, slSaved: false, tpSaved: false, dragging: false });
     }
     ensureRangeSub();
@@ -369,6 +657,7 @@
   }
 
   function updateLivePnl() {
+    if (isMt5Mode()) return;
     const { open = [] } = ctx();
     for (const [id, o] of overlays) {
       const live = open.find((p) => p.id === id);
@@ -435,6 +724,7 @@
           : `Take profit set · ${fmtPrice(sym, o.tpVal)}`;
       window.AlphaFXToast?.show(msg, "success");
       notifyTicket(o);
+      updateMt5PosBar(o.pos);
     } catch (e) {
       window.AlphaFXToast?.show(e?.message || "Could not save stops", "error");
       sync();
@@ -444,12 +734,16 @@
   function onPointerDown(ev) {
     if (!series || !chart || drag) return;
 
+    const cancelBtn = ev.target.closest("[data-cancel-stop]");
+    if (cancelBtn) return;
+
     const tag = ev.target.closest(".cpf-pos-tag");
     if (tag) {
       const row = tag.closest(".cpf-pos-row");
       const id = Number(row?.dataset.posId);
       const kind = row?.dataset.kind;
       if (id && (kind === "sl" || kind === "tp")) {
+        if (isMt5Mode()) selectPosition(id);
         ev.preventDefault();
         ev.stopPropagation();
         drag = { id, kind, pointerId: ev.pointerId, moved: false };
@@ -461,16 +755,35 @@
       }
     }
 
+    const entryLabel = ev.target.closest(".cpf-entry-label");
+    if (entryLabel) return;
+
     const y = chartY(ev.clientY);
     const hit = findHit(y);
-    if (!hit) return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    drag = { ...hit, pointerId: ev.pointerId, moved: false };
-    document.body.style.cursor = "ns-resize";
-    overlayRoot?.classList.add("is-dragging");
-    chart.applyOptions({ handleScroll: false, handleScale: false });
-    container?.setPointerCapture?.(ev.pointerId);
+    if (!hit) {
+      if (isMt5Mode() && selectedPosId && !ev.target.closest("#mt5-pos-bar")) {
+        deselectPosition();
+      }
+      return;
+    }
+
+    if (hit.kind === "entry" && isMt5Mode()) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      selectPosition(hit.id);
+      return;
+    }
+
+    if (hit.kind === "sl" || hit.kind === "tp") {
+      if (isMt5Mode()) selectPosition(hit.id);
+      ev.preventDefault();
+      ev.stopPropagation();
+      drag = { ...hit, pointerId: ev.pointerId, moved: false };
+      document.body.style.cursor = "ns-resize";
+      overlayRoot?.classList.add("is-dragging");
+      chart.applyOptions({ handleScroll: false, handleScale: false });
+      container?.setPointerCapture?.(ev.pointerId);
+    }
   }
 
   function onPointerMove(ev) {
@@ -510,6 +823,22 @@
     if (moved) persistStops(id, kind);
   }
 
+  function bindMt5PosBar() {
+    if (mt5BarBound) return;
+    mt5BarBound = true;
+
+    document.getElementById("mt5-pos-close")?.addEventListener("click", () => {
+      if (!selectedPosId) return;
+      ctx().closePosition?.(selectedPosId);
+      deselectPosition();
+    });
+
+    document.getElementById("mt5-pos-sl")?.addEventListener("click", () => showStopEditor("sl"));
+    document.getElementById("mt5-pos-tp")?.addEventListener("click", () => showStopEditor("tp"));
+
+    document.getElementById("mt5-pos-bar-dismiss")?.addEventListener("click", () => deselectPosition());
+  }
+
   function bindDrag() {
     if (dragHost) return;
     dragHost = overlayRoot?.parentElement || container;
@@ -518,6 +847,7 @@
     dragHost.addEventListener("pointermove", onPointerMove);
     dragHost.addEventListener("pointerup", onPointerUp);
     dragHost.addEventListener("pointercancel", onPointerUp);
+    bindMt5PosBar();
   }
 
   function unbindDrag() {
@@ -527,6 +857,13 @@
     dragHost.removeEventListener("pointerup", onPointerUp);
     dragHost.removeEventListener("pointercancel", onPointerUp);
     dragHost = null;
+  }
+
+  function onModeChange() {
+    if (!isMt5Mode()) {
+      deselectPosition();
+    }
+    sync();
   }
 
   function attach({ chart: c, series: s, container: el, getContext: gc }) {
@@ -547,11 +884,14 @@
     rangeSubscribed = false;
     bindDrag();
     sync();
+    window.addEventListener("resize", onModeChange);
   }
 
   function detach() {
     clear();
     unbindDrag();
+    deselectPosition();
+    window.removeEventListener("resize", onModeChange);
     chart = null;
     series = null;
     container = null;
@@ -567,5 +907,6 @@
     clear,
     updateLivePnl,
     layoutAll,
+    deselectPosition,
   };
 })();

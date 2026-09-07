@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="css/capiffy/3ac04c147fc81d91.css">
   <link rel="stylesheet" href="css/capiffy/3c6a7efccbedf43f.css">
   <link rel="stylesheet" href="css/fonts.css">
-  <link rel="stylesheet" href="css/trade-terminal.css?v=20260908c">
+  <link rel="stylesheet" href="css/trade-terminal.css?v=20260908d">
 </head>
 <body data-page="trade" data-title="Trade" data-no-wrap="true">
   <div id="app-root">
@@ -128,6 +128,17 @@
           </button>
         </div>
 
+        <div class="mt5-pos-bar" id="mt5-pos-bar" hidden aria-hidden="true">
+          <button type="button" class="mt5-pos-close" id="mt5-pos-close">
+            <span class="mt5-pos-close-icon" aria-hidden="true">→</span>
+            <span class="mt5-pos-close-text" id="mt5-pos-close-text">Close buy</span>
+            <span class="mt5-pos-close-vol" id="mt5-pos-close-vol">0.01</span>
+          </button>
+          <button type="button" class="mt5-pos-stop mt5-pos-stop--sl" id="mt5-pos-sl" aria-label="Set stop loss">SL</button>
+          <button type="button" class="mt5-pos-stop mt5-pos-stop--tp" id="mt5-pos-tp" aria-label="Set take profit">TP</button>
+          <button type="button" class="mt5-pos-bar-dismiss" id="mt5-pos-bar-dismiss" aria-label="Dismiss">⌃</button>
+        </div>
+
         <nav class="mt5-dock" aria-label="Trade navigation">
           <button type="button" class="mt5-dock-btn" data-mt5-tab="quotes">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
@@ -173,7 +184,7 @@
   <script src="js/ws-quotes.js"></script>
   <script src="js/trade-toast.js"></script>
   <script src="js/sim-pnl.js"></script>
-  <script src="js/chart-positions.js?v=20260907e"></script>
-  <script src="js/trade.js?v=20260908c"></script>
+  <script src="js/chart-positions.js?v=20260908d"></script>
+  <script src="js/trade.js?v=20260908d"></script>
 </body>
 </html>

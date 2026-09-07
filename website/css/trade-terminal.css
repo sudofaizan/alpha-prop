@@ -401,6 +401,55 @@
   color: #fff;
 }
 
+.cpf-entry-label {
+  position: absolute;
+  left: 8px;
+  top: 0;
+  transform: translateY(-50%);
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #fff;
+  pointer-events: auto;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+}
+
+.cpf-entry-label--buy {
+  background: rgba(37, 99, 235, 0.92);
+  border: 1px solid rgba(96, 165, 250, 0.5);
+}
+
+.cpf-entry-label--sell {
+  background: rgba(185, 28, 28, 0.92);
+  border: 1px solid rgba(248, 113, 113, 0.5);
+}
+
+.cpf-pos-row--entry.is-selected .cpf-entry-label {
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.65);
+}
+
+.cpf-tag-cancel {
+  margin-left: 4px;
+  padding: 0 3px;
+  border: none;
+  background: rgba(0, 0, 0, 0.25);
+  color: rgba(255, 255, 255, 0.85);
+  border-radius: 2px;
+  font-size: 11px;
+  line-height: 1.2;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.cpf-tag-cancel:active {
+  background: rgba(0, 0, 0, 0.45);
+}
+
 .cpf-pos-tag {
   position: absolute;
   left: 10px;
@@ -1052,10 +1101,6 @@ body[data-page="trade"] .dashboard-main {
     backdrop-filter: blur(12px);
   }
 
-  body[data-page="trade"].trade-mt5-mode .trade-main {
-    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
-  }
-
   .mt5-dock-btn {
     display: flex;
     flex-direction: column;
@@ -1258,6 +1303,131 @@ body[data-page="trade"] .dashboard-main {
     padding: 12px 10px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     font-size: 13px;
+  }
+
+  .mt5-pos-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+    z-index: 315;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    background: rgba(14, 14, 20, 0.96);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(10px);
+    animation: mt5-pos-bar-in 0.22s cubic-bezier(0.25, 1, 0.5, 1);
+  }
+
+  @keyframes mt5-pos-bar-in {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .mt5-pos-bar[hidden] {
+    display: none !important;
+  }
+
+  .mt5-pos-close {
+    flex: 1 1 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 14px;
+    border: none;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #f97316, #ea580c);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(249, 115, 22, 0.35);
+  }
+
+  .mt5-pos-close:active {
+    transform: scale(0.98);
+  }
+
+  .mt5-pos-close-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    font-size: 14px;
+  }
+
+  .mt5-pos-close-vol {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.18);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .mt5-pos-stop {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.04);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .mt5-pos-stop--sl {
+    border-color: rgba(239, 68, 68, 0.65);
+    color: #fecaca;
+  }
+
+  .mt5-pos-stop--tp {
+    border-color: rgba(34, 197, 94, 0.65);
+    color: #bbf7d0;
+  }
+
+  .mt5-pos-stop.is-active {
+    background: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.35);
+  }
+
+  .mt5-pos-bar-dismiss {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(96, 165, 250, 0.15);
+    color: #93c5fd;
+    font-size: 14px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  body[data-page="trade"].trade-mt5-mode .trade-main {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  }
+
+  body[data-page="trade"].trade-mt5-mode.mt5-pos-active .trade-main {
+    padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
   }
 
   .trade-toast-wrap {

@@ -256,6 +256,7 @@
       fallbackTime: () => barBuffer[barBuffer.length - 1]?.time,
       closePosition: (id) => closePosition(id),
       syncTicketStops: syncTicketStopsFromChart,
+      isMt5Mobile: () => document.body.classList.contains("trade-mt5-mode"),
     };
   }
 
@@ -1065,7 +1066,9 @@
       syncMt5Chrome();
     } else {
       closeMt5Sheet();
+      window.AlphaFXChartPositions?.deselectPosition?.();
     }
+    window.AlphaFXChartPositions?.sync?.();
     resizeChartSoon();
   }
 
