@@ -12,6 +12,15 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
 
 
+class RiskWarningOut(BaseModel):
+    kind: str
+    title: str
+    subtitle: str
+    rule_label: str | None = None
+    strike_count: int = 0
+    strike_limit: int = 2
+
+
 class UserOut(BaseModel):
     id: int
     email: EmailStr
@@ -19,11 +28,28 @@ class UserOut(BaseModel):
     is_admin: bool = False
     is_blocked: bool = False
     created_at: str | None = None
+    strike_count: int = 0
+    strike_limit: int = 2
+    is_breached: bool = False
+    risk_warnings: list[RiskWarningOut] = []
 
     model_config = {"from_attributes": True}
 
 
-def user_out(user) -> UserOut:
+def user_out(user, db=None) -> UserOut:
+    strike_count_val = 0
+    warnings: list[dict] = []
+    is_breached = False
+    strike_limit = 2
+    if db is not None:
+        from app.models.user_strike import STRIKE_LIMIT
+        from app.services.strikes import risk_warnings_for_user, strike_count
+
+        strike_limit = STRIKE_LIMIT
+        strike_count_val = strike_count(db, user.id)
+        warnings = risk_warnings_for_user(db, user)
+        is_breached = strike_count_val >= STRIKE_LIMIT
+
     return UserOut(
         id=user.id,
         email=user.email,
@@ -31,6 +57,10 @@ def user_out(user) -> UserOut:
         is_admin=user.is_admin,
         is_blocked=user.is_blocked,
         created_at=user.created_at.isoformat() if user.created_at else None,
+        strike_count=strike_count_val,
+        strike_limit=strike_limit,
+        is_breached=is_breached,
+        risk_warnings=warnings,
     )
 
 
@@ -90,15 +120,6 @@ class AccountSummary(BaseModel):
 class AccountsListResponse(BaseModel):
     items: list[AccountSummary]
     counts: dict[str, int]
-
-
-class RiskWarningOut(BaseModel):
-    kind: str
-    title: str
-    subtitle: str
-    rule_label: str | None = None
-    strike_count: int = 0
-    strike_limit: int = 2
 
 
 class DashboardResponse(BaseModel):

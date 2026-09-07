@@ -23,7 +23,7 @@ def register(payload: RegisterRequest, request: Request, db: Session = Depends(g
         user_agent=request.headers.get("user-agent"),
         ip_address=request.client.host if request.client else None,
     )
-    return LoginResponse(access_token=token, user=user_out(user))
+    return LoginResponse(access_token=token, user=user_out(user, db))
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -42,7 +42,7 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
         user_agent=request.headers.get("user-agent"),
         ip_address=request.client.host if request.client else None,
     )
-    return LoginResponse(access_token=token, user=user_out(user))
+    return LoginResponse(access_token=token, user=user_out(user, db))
 
 
 @router.post("/logout", response_model=MessageResponse)
@@ -52,5 +52,5 @@ def logout(user: User = Depends(get_current_user), db: Session = Depends(get_db)
 
 
 @router.get("/me", response_model=UserOut)
-def me(user: User = Depends(get_current_user)):
-    return user_out(user)
+def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return user_out(user, db)

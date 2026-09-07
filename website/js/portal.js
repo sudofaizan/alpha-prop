@@ -187,7 +187,7 @@
       const pnlClass = totalPnl >= 0 ? "is-success" : totalPnl < 0 ? "is-danger" : "";
       const dailyLimit = start * (a.max_daily_loss_pct / 100);
       const targetAmt = start * (a.profit_target_pct / 100);
-      const warnings = (data.risk_warnings || []).map(riskBanner).join("");
+      const warnings = (data.risk_warnings?.length ? data.risk_warnings : window.__ALPHAFX_USER?.risk_warnings || []).map(riskBanner).join("");
       const userName = data.user_name || window.__ALPHAFX_USER?.full_name || "Trader";
 
       root.innerHTML = `
