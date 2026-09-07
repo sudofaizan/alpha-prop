@@ -373,4 +373,8 @@ Useful commands:
 To update after git pull:
   cd ${ROOT} && git pull && ${ROOT}/ec2_deploy.sh
 
+Auto-deploy on GitHub push (poll every 5 min):
+  ${ROOT}/cicd.sh
+  # or: sudo systemctl enable --now alphafx-cicd  (see cicd.sh header)
+
 EOF
