@@ -384,6 +384,10 @@
     const label = document.getElementById("trade-live-label");
     if (dot) dot.classList.toggle("live", !!live);
     if (label) label.textContent = live ? "Live" : "Reconnecting…";
+    const mt5Dot = document.getElementById("mt5-live-dot");
+    const mt5Text = document.getElementById("mt5-live-text");
+    if (mt5Dot) mt5Dot.classList.toggle("is-live", !!live);
+    if (mt5Text) mt5Text.textContent = live ? "Live" : "…";
   }
 
   function renderSymbolTabs() {
@@ -462,6 +466,7 @@
       if (next < prev) el.classList.add("down");
     }
     lastPrices[sym] = next;
+    refreshMt5QuotePrices();
 
     if (sym === activeSymbol) updateTicket(tick);
   }
@@ -477,9 +482,31 @@
   function updateTicket(tick) {
     const sell = document.getElementById("trade-sell-px");
     const buy = document.getElementById("trade-buy-px");
-    if (sell) sell.textContent = fmtPrice(tick.symbol, tick.bid);
-    if (buy) buy.textContent = fmtPrice(tick.symbol, tick.ask);
+    const mt5Sell = document.getElementById("mt5-sell-px");
+    const mt5Buy = document.getElementById("mt5-buy-px");
+    const bid = fmtPrice(tick.symbol, tick.bid);
+    const ask = fmtPrice(tick.symbol, tick.ask);
+    if (sell) sell.textContent = bid;
+    if (buy) buy.textContent = ask;
+    if (mt5Sell) {
+      const prev = mt5Sell.textContent;
+      mt5Sell.textContent = bid;
+      flashMt5Price(mt5Sell, prev, bid);
+    }
+    if (mt5Buy) {
+      const prev = mt5Buy.textContent;
+      mt5Buy.textContent = ask;
+      flashMt5Price(mt5Buy, prev, ask);
+    }
     if (tick.symbol === activeSymbol) updateChartBadge(tick.symbol);
+  }
+
+  function flashMt5Price(el, prev, next) {
+    if (!el || prev === "—" || prev === next) return;
+    const up = Number(next) > Number(prev);
+    el.classList.remove("flash-up", "flash-down");
+    el.classList.add(up ? "flash-up" : "flash-down");
+    setTimeout(() => el.classList.remove("flash-up", "flash-down"), 280);
   }
 
   function mapAccountMetrics(account, live = null) {
@@ -692,7 +719,17 @@
 
   function setTradingControls(enabled) {
     tradingEnabled = Boolean(enabled);
-    const ids = ["trade-volume", "trade-sl", "trade-tp", "trade-price", "trade-buy-btn", "trade-sell-btn"];
+    const ids = [
+      "trade-volume",
+      "trade-sl",
+      "trade-tp",
+      "trade-price",
+      "trade-buy-btn",
+      "trade-sell-btn",
+      "mt5-lot-input",
+      "mt5-buy-btn",
+      "mt5-sell-btn",
+    ];
     ids.forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.disabled = !tradingEnabled || orderBusy;
@@ -825,6 +862,8 @@
   function bindTradeActions() {
     document.getElementById("trade-buy-btn")?.addEventListener("click", () => submitOrder("buy"));
     document.getElementById("trade-sell-btn")?.addEventListener("click", () => submitOrder("sell"));
+    document.getElementById("mt5-buy-btn")?.addEventListener("click", () => submitOrder("buy"));
+    document.getElementById("mt5-sell-btn")?.addEventListener("click", () => submitOrder("sell"));
     document.getElementById("trade-bottom-body")?.addEventListener("click", (e) => {
       const closeBtn = e.target.closest("[data-close-trade]");
       if (closeBtn) {
@@ -907,6 +946,7 @@
         closed: "No closed trades yet.",
       };
       body.innerHTML = `<div class="trade-empty">${msgs[bottomPanel]}</div>`;
+      syncMt5HistorySheet();
       return;
     }
 
@@ -933,6 +973,7 @@
         </tr>`;
           })
           .join("")}</tbody></table></div>`;
+      syncMt5HistorySheet();
       return;
     }
 
@@ -963,6 +1004,36 @@
       </tr>`;
         })
         .join("")}</tbody></table></div>`;
+
+    syncMt5HistorySheet();
+  }
+
+  function syncMt5HistorySheet() {
+    if (!isMobileMt5() || mt5SheetTab !== "history") return;
+    const histBody = document.getElementById("mt5-history-body");
+    const desktopBody = document.getElementById("trade-bottom-body");
+    if (histBody && desktopBody) histBody.innerHTML = desktopBody.innerHTML;
+    const c = tradeSnapshot.counts || {
+      open: tradeSnapshot.open?.length ?? 0,
+      pending: tradeSnapshot.pending?.length ?? 0,
+      closed: tradeSnapshot.closed?.length ?? 0,
+    };
+    document.querySelectorAll("#mt5-history-tabs button").forEach((btn) => {
+      const panel = btn.dataset.panel;
+      const countEl = btn.querySelector(".trade-tab-count");
+      if (countEl && panel) countEl.textContent = String(c[panel] ?? 0);
+      btn.classList.toggle("active", panel === bottomPanel);
+    });
+  }
+
+  function refreshMt5QuotePrices() {
+    if (!isMobileMt5() || mt5SheetTab !== "quotes") return;
+    document.querySelectorAll("[data-mt5-symbol]").forEach((row) => {
+      const sym = row.dataset.mt5Symbol;
+      const px = lastPrices[sym];
+      const pxEl = row.querySelector(".px");
+      if (pxEl && px != null) pxEl.textContent = fmtPrice(sym, px);
+    });
   }
 
   function bindBottomTabs() {
@@ -986,8 +1057,248 @@
     if (!main) return;
     const mobile = window.matchMedia("(max-width: 960px)").matches;
     main.classList.toggle("trade-mobile", mobile);
-    if (mobile) main.classList.add("watchlist-collapsed");
+    document.body.classList.toggle("trade-mt5-mode", mobile);
+    const mt5 = document.getElementById("mt5-mobile");
+    if (mt5) mt5.hidden = !mobile;
+    if (mobile) {
+      main.classList.add("watchlist-collapsed");
+      syncMt5Chrome();
+    } else {
+      closeMt5Sheet();
+    }
     resizeChartSoon();
+  }
+
+  let mt5SheetTab = null;
+  let mt5Bound = false;
+
+  function isMobileMt5() {
+    return document.body.classList.contains("trade-mt5-mode");
+  }
+
+  function syncMt5Chrome() {
+    const sym = document.getElementById("mt5-symbol-name");
+    const tf = document.getElementById("mt5-tf-btn");
+    const lot = document.getElementById("mt5-lot-input");
+    const vol = document.getElementById("trade-volume");
+    if (sym) sym.textContent = activeSymbol || "—";
+    if (tf) tf.textContent = tfLabel(activeTimeframe);
+    if (lot && vol && lot !== document.activeElement) lot.value = vol.value;
+  }
+
+  function syncVolumeFromMt5() {
+    const lot = document.getElementById("mt5-lot-input");
+    const vol = document.getElementById("trade-volume");
+    if (lot && vol) vol.value = lot.value;
+  }
+
+  function stepMt5Lot(delta) {
+    const lot = document.getElementById("mt5-lot-input");
+    const vol = document.getElementById("trade-volume");
+    const el = lot || vol;
+    if (!el) return;
+    const next = Math.max(0.01, Math.round((Number(el.value || 0.01) + delta) * 100) / 100);
+    el.value = String(next);
+    if (lot && vol) vol.value = lot.value;
+  }
+
+  function renderMt5Quotes() {
+    const body = document.getElementById("mt5-sheet-body");
+    if (!body) return;
+    const items = Object.values(groups || {}).flat();
+    if (!items.length) {
+      body.innerHTML = `<p style="padding:16px;color:var(--text-mute);">Loading symbols…</p>`;
+      return;
+    }
+    body.innerHTML = items
+      .map((item) => {
+        const px = lastPrices[item.symbol];
+        const pxText = px != null ? fmtPrice(item.symbol, px) : "—";
+        return `<button type="button" class="mt5-quote-row${item.symbol === activeSymbol ? " is-active" : ""}" data-mt5-symbol="${item.symbol}">
+          <div><div class="sym">${item.symbol}</div><div class="name">${item.name || ""}</div></div>
+          <div class="px">${pxText}</div>
+        </button>`;
+      })
+      .join("");
+  }
+
+  function renderMt5TradeSheet() {
+    const body = document.getElementById("mt5-sheet-body");
+    const ticket = document.querySelector(".trade-ticket");
+    if (!body || !ticket) return;
+    body.innerHTML = `<div class="mt5-trade-form" id="mt5-trade-form-mount"></div>`;
+    const mount = document.getElementById("mt5-trade-form-mount");
+    if (!mount) return;
+    const tabs = document.getElementById("trade-order-type-tabs");
+    if (tabs) mount.appendChild(tabs);
+    ["trade-price-field", "trade-sl", "trade-tp"].forEach((id) => {
+      const el = document.getElementById(id);
+      const field = el?.closest(".trade-field");
+      if (field) mount.appendChild(field);
+    });
+    const metrics = document.getElementById("trade-metrics");
+    if (metrics) mount.appendChild(metrics);
+    updateOrderTicketUI();
+  }
+
+  function restoreMt5TradeSheet() {
+    const ticket = document.querySelector(".trade-ticket");
+    const mount = document.getElementById("mt5-trade-form-mount");
+    if (!ticket || !mount) return;
+    while (mount.firstChild) ticket.appendChild(mount.firstChild);
+    updateOrderTicketUI();
+  }
+
+  function renderMt5HistorySheet() {
+    const body = document.getElementById("mt5-sheet-body");
+    if (!body) return;
+    body.innerHTML = `
+      <div class="trade-bottom-tabs" id="mt5-history-tabs">
+        <button type="button" class="${bottomPanel === "open" ? "active" : ""}" data-panel="open">Open <span class="trade-tab-count">${tradeSnapshot.counts?.open ?? 0}</span></button>
+        <button type="button" class="${bottomPanel === "pending" ? "active" : ""}" data-panel="pending">Pending <span class="trade-tab-count">${tradeSnapshot.counts?.pending ?? 0}</span></button>
+        <button type="button" class="${bottomPanel === "closed" ? "active" : ""}" data-panel="closed">Closed <span class="trade-tab-count">${tradeSnapshot.counts?.closed ?? 0}</span></button>
+      </div>
+      <div id="mt5-history-body"></div>`;
+    const histBody = document.getElementById("mt5-history-body");
+    const desktopBody = document.getElementById("trade-bottom-body");
+    if (histBody && desktopBody) {
+      histBody.innerHTML = desktopBody.innerHTML;
+    }
+    document.getElementById("mt5-history-tabs")?.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-panel]");
+      if (!btn) return;
+      bottomPanel = btn.dataset.panel || "open";
+      renderBottomPanel();
+      renderMt5HistorySheet();
+    });
+    histBody?.addEventListener("click", (e) => {
+      const closeBtn = e.target.closest("[data-close-trade]");
+      if (closeBtn) closePosition(Number(closeBtn.dataset.closeTrade));
+      const cancelBtn = e.target.closest("[data-cancel-pending]");
+      if (cancelBtn) cancelPendingOrder(Number(cancelBtn.dataset.cancelPending));
+    });
+  }
+
+  function renderMt5MenuSheet() {
+    const body = document.getElementById("mt5-sheet-body");
+    if (!body) return;
+    const bal = document.getElementById("trade-account-balance")?.textContent || "—";
+    body.innerHTML = `
+      <div style="padding:8px 12px 12px;font-size:12px;color:var(--text-mute);">${bal}</div>
+      <a class="mt5-menu-link" href="dashboard.html">Dashboard</a>
+      <a class="mt5-menu-link" href="accounts.html">My Accounts</a>
+      <a class="mt5-menu-link" href="notifications.html">Notifications</a>
+      <a class="mt5-menu-link" href="support.html">Support</a>
+      <button type="button" class="mt5-menu-link" id="mt5-sign-out" style="width:100%;border:none;background:transparent;cursor:pointer;text-align:left;">Sign out</button>`;
+    document.getElementById("mt5-sign-out")?.addEventListener("click", () => {
+      window.AlphaFXAuth?.logout?.().finally(() => {
+        window.location.href = "login.html";
+      });
+    });
+  }
+
+  function renderMt5TfSheet() {
+    const body = document.getElementById("mt5-sheet-body");
+    if (!body) return;
+    body.innerHTML = `<div class="mt5-tf-grid">${TIMEFRAMES.map(
+      (t) =>
+        `<button type="button" class="${t.id === activeTimeframe ? "is-active" : ""}" data-mt5-tf="${t.id}">${t.label}</button>`
+    ).join("")}</div>`;
+    body.querySelectorAll("[data-mt5-tf]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tf = btn.dataset.mt5Tf;
+        if (!tf || tf === activeTimeframe) {
+          closeMt5Sheet();
+          return;
+        }
+        activeTimeframe = tf;
+        saveTimeframePref();
+        renderTimeframes();
+        applyTimeScaleOptions();
+        syncMt5Chrome();
+        loadChart(activeSymbol);
+        closeMt5Sheet();
+      });
+    });
+  }
+
+  function openMt5Sheet(tab) {
+    const sheet = document.getElementById("mt5-sheet");
+    const title = document.getElementById("mt5-sheet-title");
+    if (!sheet) return;
+    if (tab === "chart") {
+      closeMt5Sheet();
+      return;
+    }
+    mt5SheetTab = tab;
+    sheet.classList.add("is-open");
+    sheet.setAttribute("aria-hidden", "false");
+    document.querySelectorAll(".mt5-dock-btn").forEach((b) => {
+      b.classList.toggle("is-active", b.dataset.mt5Tab === tab);
+    });
+    if (tab === "quotes") {
+      if (title) title.textContent = "Quotes";
+      renderMt5Quotes();
+    } else if (tab === "trade") {
+      if (title) title.textContent = "Trade";
+      renderMt5TradeSheet();
+    } else if (tab === "history") {
+      if (title) title.textContent = "History";
+      renderMt5HistorySheet();
+    } else if (tab === "menu") {
+      if (title) title.textContent = "Menu";
+      renderMt5MenuSheet();
+    }
+  }
+
+  function closeMt5Sheet() {
+    const sheet = document.getElementById("mt5-sheet");
+    if (!sheet) return;
+    if (mt5SheetTab === "trade") restoreMt5TradeSheet();
+    mt5SheetTab = null;
+    sheet.classList.remove("is-open");
+    sheet.setAttribute("aria-hidden", "true");
+    document.querySelector(".mt5-dock-btn[data-mt5-tab='chart']")?.classList.add("is-active");
+    document.querySelectorAll(".mt5-dock-btn:not([data-mt5-tab='chart'])").forEach((b) => b.classList.remove("is-active"));
+  }
+
+  function bindMobileMt5() {
+    if (mt5Bound) return;
+    mt5Bound = true;
+
+    document.getElementById("mt5-lot-minus")?.addEventListener("click", () => stepMt5Lot(-0.01));
+    document.getElementById("mt5-lot-plus")?.addEventListener("click", () => stepMt5Lot(0.01));
+    document.getElementById("mt5-lot-input")?.addEventListener("input", syncVolumeFromMt5);
+
+    document.getElementById("mt5-symbol-btn")?.addEventListener("click", () => openMt5Sheet("quotes"));
+    document.getElementById("mt5-tf-btn")?.addEventListener("click", () => {
+      const sheet = document.getElementById("mt5-sheet");
+      const title = document.getElementById("mt5-sheet-title");
+      if (sheet) {
+        sheet.classList.add("is-open");
+        sheet.setAttribute("aria-hidden", "false");
+        if (title) title.textContent = "Timeframe";
+        renderMt5TfSheet();
+      }
+    });
+
+    document.querySelectorAll(".mt5-dock-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tab = btn.dataset.mt5Tab;
+        if (tab === "chart") closeMt5Sheet();
+        else openMt5Sheet(tab);
+      });
+    });
+
+    document.getElementById("mt5-sheet-close")?.addEventListener("click", closeMt5Sheet);
+    document.getElementById("mt5-sheet-backdrop")?.addEventListener("click", closeMt5Sheet);
+
+    document.getElementById("mt5-sheet-body")?.addEventListener("click", (e) => {
+      const symBtn = e.target.closest("[data-mt5-symbol]");
+      if (!symBtn) return;
+      selectSymbol(symBtn.dataset.mt5Symbol);
+      closeMt5Sheet();
+    });
   }
 
   function bindWatchlistToggle() {
@@ -1031,6 +1342,7 @@
     if (last) updateTicket(last);
     window.AlphaFXQuotes.subscribe([symbol]);
     await loadChart(symbol);
+    syncMt5Chrome();
   }
 
   async function loadSymbols() {
@@ -1155,6 +1467,7 @@
     bindBottomTabs();
     bindWatchlistToggle();
     bindTradeActions();
+    bindMobileMt5();
     bindOrderTypeTabs();
     updateOrderTicketUI();
     loadTimeframePref();

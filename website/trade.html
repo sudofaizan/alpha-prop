@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="css/capiffy/3ac04c147fc81d91.css">
   <link rel="stylesheet" href="css/capiffy/3c6a7efccbedf43f.css">
   <link rel="stylesheet" href="css/fonts.css">
-  <link rel="stylesheet" href="css/trade-terminal.css?v=20260907r">
+  <link rel="stylesheet" href="css/trade-terminal.css?v=20260908c">
 </head>
 <body data-page="trade" data-title="Trade" data-no-wrap="true">
   <div id="app-root">
@@ -100,6 +100,69 @@
         </div>
         <div class="trade-bottom-body" id="trade-bottom-body"></div>
       </div>
+
+      <!-- MT5-style mobile shell (≤960px) -->
+      <div class="mt5-mobile" id="mt5-mobile" hidden>
+        <header class="mt5-head">
+          <button type="button" class="mt5-symbol-btn" id="mt5-symbol-btn" aria-expanded="false">
+            <span class="mt5-symbol-name" id="mt5-symbol-name">—</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <button type="button" class="mt5-tf-btn" id="mt5-tf-btn">M1</button>
+          <span class="mt5-live-pill"><span class="mt5-live-dot" id="mt5-live-dot"></span><span id="mt5-live-text">Live</span></span>
+        </header>
+
+        <div class="mt5-oct">
+          <button type="button" class="mt5-oct-side mt5-oct-side--sell" id="mt5-sell-btn" disabled>
+            <span class="mt5-oct-label">SELL</span>
+            <span class="mt5-oct-price" id="mt5-sell-px">—</span>
+          </button>
+          <div class="mt5-lot">
+            <button type="button" class="mt5-lot-step" id="mt5-lot-minus" aria-label="Decrease volume">−</button>
+            <input type="number" class="mt5-lot-input" id="mt5-lot-input" value="0.01" min="0.01" step="0.01" aria-label="Volume">
+            <button type="button" class="mt5-lot-step" id="mt5-lot-plus" aria-label="Increase volume">+</button>
+          </div>
+          <button type="button" class="mt5-oct-side mt5-oct-side--buy" id="mt5-buy-btn" disabled>
+            <span class="mt5-oct-label">BUY</span>
+            <span class="mt5-oct-price" id="mt5-buy-px">—</span>
+          </button>
+        </div>
+
+        <nav class="mt5-dock" aria-label="Trade navigation">
+          <button type="button" class="mt5-dock-btn" data-mt5-tab="quotes">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+            <span>Quotes</span>
+          </button>
+          <button type="button" class="mt5-dock-btn is-active" data-mt5-tab="chart">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 17l5-5 4 4 7-9"/></svg>
+            <span>Chart</span>
+          </button>
+          <button type="button" class="mt5-dock-btn" data-mt5-tab="trade">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8M8 12h8"/></svg>
+            <span>Trade</span>
+          </button>
+          <button type="button" class="mt5-dock-btn" data-mt5-tab="history">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            <span>History</span>
+          </button>
+          <button type="button" class="mt5-dock-btn" data-mt5-tab="menu">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+            <span>Menu</span>
+          </button>
+        </nav>
+
+        <div class="mt5-sheet" id="mt5-sheet" aria-hidden="true">
+          <div class="mt5-sheet-backdrop" id="mt5-sheet-backdrop"></div>
+          <div class="mt5-sheet-panel" role="dialog" aria-modal="true">
+            <div class="mt5-sheet-handle"></div>
+            <header class="mt5-sheet-head">
+              <h2 class="mt5-sheet-title" id="mt5-sheet-title">Quotes</h2>
+              <button type="button" class="mt5-sheet-close" id="mt5-sheet-close" aria-label="Close">×</button>
+            </header>
+            <div class="mt5-sheet-body" id="mt5-sheet-body"></div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
   <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
@@ -111,6 +174,6 @@
   <script src="js/trade-toast.js"></script>
   <script src="js/sim-pnl.js"></script>
   <script src="js/chart-positions.js?v=20260907e"></script>
-  <script src="js/trade.js?v=20260907q"></script>
+  <script src="js/trade.js?v=20260908c"></script>
 </body>
 </html>
