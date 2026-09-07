@@ -102,6 +102,21 @@
       chart = window.LightweightCharts.createChart(container, {
         layout: { background: { color: "#0f0f14" }, textColor: "#a1a1aa" },
         grid: { vertLines: { color: "#1f1f28" }, horzLines: { color: "#1f1f28" } },
+        crosshair: {
+          mode: window.LightweightCharts.CrosshairMode.Normal,
+          vertLine: {
+            color: "rgba(255, 255, 255, 0.55)",
+            width: 1,
+            style: window.LightweightCharts.LineStyle.Dashed,
+            labelBackgroundColor: "#27272a",
+          },
+          horzLine: {
+            color: "rgba(255, 255, 255, 0.55)",
+            width: 1,
+            style: window.LightweightCharts.LineStyle.Dashed,
+            labelBackgroundColor: "#27272a",
+          },
+        },
         timeScale: { timeVisible: true, secondsVisible: false },
         rightPriceScale: { borderColor: "#27272a" },
       });
@@ -123,7 +138,25 @@
     } else {
       const w = Math.max(container.clientWidth, 320);
       const h = Math.max(container.clientHeight, 420);
-      chart.applyOptions({ width: w, height: h });
+      chart.applyOptions({
+        width: w,
+        height: h,
+        crosshair: {
+          mode: window.LightweightCharts.CrosshairMode.Normal,
+          vertLine: {
+            color: "rgba(255, 255, 255, 0.55)",
+            width: 1,
+            style: window.LightweightCharts.LineStyle.Dashed,
+            labelBackgroundColor: "#27272a",
+          },
+          horzLine: {
+            color: "rgba(255, 255, 255, 0.55)",
+            width: 1,
+            style: window.LightweightCharts.LineStyle.Dashed,
+            labelBackgroundColor: "#27272a",
+          },
+        },
+      });
     }
     return series;
   }
