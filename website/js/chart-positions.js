@@ -85,19 +85,49 @@
     return `${sign}$${Math.abs(n).toFixed(2)}`;
   }
 
-  /** User-friendly price on SL/TP tags ($ for USD-quoted symbols). */
-  function fmtTagPrice(symbol, value) {
-    const p = fmtPrice(symbol, value);
-    const usdQuoted = /USD$|^XAU|^XAG|^BTC|^ETH|^NAS|^US30|^SPX/i.test(symbol);
-    return usdQuoted ? `$${p}` : p;
+  /** User-friendly $ P/L impact on equity if SL/TP is hit at this level. */
+  function pnlAtPrice(pos, exitPrice) {
+    if (!window.AlphaFXSimPnl?.calcPnl || exitPrice == null) return 0;
+    const meta = ctx().symbolMeta?.[pos.symbol];
+    return window.AlphaFXSimPnl.calcPnl(
+      pos.symbol,
+      pos.side,
+      pos.volume,
+      pos.entry,
+      exitPrice,
+      meta
+    );
+  }
+
+  function fmtTagPnl(pnl) {
+    const n = Number(pnl || 0);
+    if (n === 0) return "$0.00";
+    const sign = n > 0 ? "+" : "-";
+    return `${sign}$${Math.abs(n).toFixed(2)}`;
+  }
+
+  function tagPnlClass(pnl) {
+    const n = Number(pnl || 0);
+    if (n > 0) return "positive";
+    if (n < 0) return "negative";
+    return "";
   }
 
   function updateTagPrices(o) {
-    const sym = o.pos.symbol;
-    const slPx = o.slRow?.querySelector(".cpf-pos-tag-price");
-    const tpPx = o.tpRow?.querySelector(".cpf-pos-tag-price");
-    if (slPx && o.slVal != null) slPx.textContent = fmtTagPrice(sym, o.slVal);
-    if (tpPx && o.tpVal != null) tpPx.textContent = fmtTagPrice(sym, o.tpVal);
+    const slPx = o.slRow?.querySelector(".cpf-pos-tag-pnl");
+    const tpPx = o.tpRow?.querySelector(".cpf-pos-tag-pnl");
+    if (slPx && o.slVal != null) {
+      const pnl = pnlAtPrice(o.pos, o.slVal);
+      slPx.textContent = fmtTagPnl(pnl);
+      slPx.classList.remove("positive", "negative");
+      slPx.classList.add(tagPnlClass(pnl));
+    }
+    if (tpPx && o.tpVal != null) {
+      const pnl = pnlAtPrice(o.pos, o.tpVal);
+      tpPx.textContent = fmtTagPnl(pnl);
+      tpPx.classList.remove("positive", "negative");
+      tpPx.classList.add(tagPnlClass(pnl));
+    }
   }
 
   function chartY(clientY) {
@@ -213,16 +243,17 @@
     return row;
   }
 
-  function buildTag(kind, pos, price, saved) {
+  function buildTag(kind, pos, levelPrice, saved) {
     const row = document.createElement("div");
     row.className = `cpf-pos-row cpf-pos-row--${kind}${saved ? "" : " is-draft"}`;
     row.dataset.posId = String(pos.id);
     row.dataset.kind = kind;
-    const px = fmtTagPrice(pos.symbol, price);
+    const pnl = pnlAtPrice(pos, levelPrice);
+    const pnlCls = tagPnlClass(pnl);
     row.innerHTML = `
       <span class="cpf-pos-tag cpf-pos-tag--${kind}">
         <span class="cpf-pos-tag-label">${kind.toUpperCase()}</span>
-        <span class="cpf-pos-tag-price">${px}</span>
+        <span class="cpf-pos-tag-pnl ${pnlCls}">${fmtTagPnl(pnl)}</span>
       </span>
     `;
     return row;

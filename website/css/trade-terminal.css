@@ -428,13 +428,21 @@
   flex-shrink: 0;
 }
 
-.cpf-pos-tag-price {
+.cpf-pos-tag-pnl {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0;
   padding-left: 6px;
   border-left: 1px solid rgba(255, 255, 255, 0.28);
+}
+
+.cpf-pos-tag-pnl.positive {
+  color: #bbf7d0;
+}
+
+.cpf-pos-tag-pnl.negative {
+  color: #fecaca;
 }
 
 .cpf-pos-tag--sl {
