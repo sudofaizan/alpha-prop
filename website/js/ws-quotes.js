@@ -30,6 +30,7 @@
       this._connecting = false;
       this._live = false;
       this._statusTimer = null;
+      this._pingTimer = null;
       this._last = {};
     }
 
@@ -64,6 +65,7 @@
     disconnect() {
       this._shouldRun = false;
       this._connecting = false;
+      this._stopPing();
       if (this.ws) {
         const old = this.ws;
         old.onclose = null;
@@ -94,6 +96,22 @@
       }
     }
 
+    _startPing(ws) {
+      this._stopPing();
+      this._pingTimer = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ action: "ping" }));
+        }
+      }, 25000);
+    }
+
+    _stopPing() {
+      if (this._pingTimer) {
+        clearInterval(this._pingTimer);
+        this._pingTimer = null;
+      }
+    }
+
     _open() {
       const url = wsUrl();
       if (!url || !this._shouldRun || this._connecting) return;
@@ -118,6 +136,7 @@
         this.reconnectMs = 2000;
         this._sendSubscribe();
         this._setLive(true, true);
+        this._startPing(ws);
       };
 
       ws.onmessage = (ev) => {
@@ -138,6 +157,7 @@
 
       ws.onclose = () => {
         if (this.ws !== ws) return;
+        this._stopPing();
         this.ws = null;
         this._connecting = false;
         if (!this._shouldRun) return;

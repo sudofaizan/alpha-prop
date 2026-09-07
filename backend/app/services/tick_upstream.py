@@ -3,6 +3,7 @@ import json
 import logging
 import random
 import time
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.config import settings
@@ -11,14 +12,22 @@ from app.services.symbols import normalize_symbol
 log = logging.getLogger(__name__)
 
 
+@dataclass
+class QuoteClient:
+    """One browser WebSocket — ticks are queued; the route handler is the only sender."""
+
+    ws: Any
+    symbols: set[str] = field(default_factory=set)
+    queue: asyncio.Queue[str | None] = field(default_factory=asyncio.Queue)
+
+
 class TickUpstream:
     """Maintains connection to tick hub and fans ticks to portal WS clients."""
 
     def __init__(self) -> None:
-        self._clients: dict[Any, set[str]] = {}
+        self._clients: dict[Any, QuoteClient] = {}
         self._last: dict[str, dict[str, Any]] = {}
         self._task: asyncio.Task | None = None
-        self._lock = asyncio.Lock()
 
     def start(self) -> None:
         if self._task is None:
@@ -32,14 +41,31 @@ class TickUpstream:
             except asyncio.CancelledError:
                 pass
             self._task = None
+        for client in list(self._clients.values()):
+            try:
+                client.queue.put_nowait(None)
+            except Exception:
+                pass
+
+    def register(self, ws: Any) -> QuoteClient:
+        client = QuoteClient(ws=ws)
+        self._clients[ws] = client
+        return client
 
     def subscribe(self, ws: Any, symbols: list[str]) -> list[dict[str, Any]]:
-        syms = {normalize_symbol(s) for s in symbols if s}
-        self._clients[ws] = syms
-        return [self._last[s] for s in syms if s in self._last]
+        client = self._clients.get(ws)
+        if not client:
+            return []
+        client.symbols = {normalize_symbol(s) for s in symbols if s}
+        return [self._last[s] for s in client.symbols if s in self._last]
 
     def unsubscribe(self, ws: Any) -> None:
-        self._clients.pop(ws, None)
+        client = self._clients.pop(ws, None)
+        if client:
+            try:
+                client.queue.put_nowait(None)
+            except Exception:
+                pass
 
     async def _run(self) -> None:
         while True:
@@ -68,14 +94,7 @@ class TickUpstream:
                     continue
                 if tick.get("type") != "tick":
                     continue
-                sym = normalize_symbol(str(tick.get("symbol", "")))
-                source = tick.get("source", "mt5")
-                prev = self._last.get(sym)
-                if prev and prev.get("source") == "mt5" and source == "mock":
-                    continue
-                tick = {**tick, "symbol": sym, "source": source}
-                self._last[sym] = tick
-                await self._fanout(tick)
+                await self._ingest_tick(tick)
 
     async def _mock_loop(self) -> None:
         seeds = {"EURUSD": 1.0850, "GBPUSD": 1.2650, "USDJPY": 149.5, "XAUUSD": 2650.0, "BTCUSD": 80000.0}
@@ -94,31 +113,38 @@ class TickUpstream:
                 spread = spreads[sym]
                 bid = round(prices[sym], 5 if sym != "BTCUSD" else 3)
                 ask = round(bid + spread, 5 if sym != "BTCUSD" else 3)
-                tick = {
-                    "type": "tick",
-                    "symbol": sym,
-                    "bid": bid,
-                    "ask": ask,
-                    "time_ms": int(time.time() * 1000),
-                    "source": "mock",
-                }
-                self._last[sym] = tick
-                await self._fanout(tick)
+                await self._ingest_tick(
+                    {
+                        "type": "tick",
+                        "symbol": sym,
+                        "bid": bid,
+                        "ask": ask,
+                        "time_ms": int(time.time() * 1000),
+                        "source": "mock",
+                    }
+                )
             await asyncio.sleep(0.25)
+
+    async def _ingest_tick(self, tick: dict[str, Any]) -> None:
+        sym = normalize_symbol(str(tick.get("symbol", "")))
+        source = tick.get("source", "mt5")
+        prev = self._last.get(sym)
+        if prev and prev.get("source") == "mt5" and source == "mock":
+            return
+        tick = {**tick, "symbol": sym, "source": source}
+        self._last[sym] = tick
+        await self._fanout(tick)
 
     async def _fanout(self, tick: dict[str, Any]) -> None:
         sym = tick["symbol"]
         msg = json.dumps(tick)
-        dead: list[Any] = []
-        for ws, syms in list(self._clients.items()):
-            if sym not in syms:
+        for client in list(self._clients.values()):
+            if sym not in client.symbols:
                 continue
             try:
-                await ws.send_text(msg)
+                client.queue.put_nowait(msg)
             except Exception:
-                dead.append(ws)
-        for ws in dead:
-            self.unsubscribe(ws)
+                self.unsubscribe(client.ws)
 
 
 tick_upstream = TickUpstream()
