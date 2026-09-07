@@ -184,18 +184,21 @@
 
   function shouldShowSl(o) {
     if (!isMt5Mode()) return true;
-    if (selectedPosId !== o.pos.id) return false;
-    return o.slVisible || o.slSaved;
+    if (o.slSaved) return true;
+    if (selectedPosId === o.pos.id && o.slVisible) return true;
+    return false;
   }
 
   function shouldShowTp(o) {
     if (!isMt5Mode()) return true;
-    if (selectedPosId !== o.pos.id) return false;
-    return o.tpVisible || o.tpSaved;
+    if (o.tpSaved) return true;
+    if (selectedPosId === o.pos.id && o.tpVisible) return true;
+    return false;
   }
 
   function isStopActive(o, kind) {
     if (!isMt5Mode()) return false;
+    if (selectedPosId !== o.pos.id) return false;
     const dragging = drag && drag.id === o.pos.id && drag.kind === kind;
     if (kind === "sl") return o.slVisible || o.slDirty || dragging;
     return o.tpVisible || o.tpDirty || dragging;
@@ -517,17 +520,18 @@
     o.tpBaseline = o.tpSaved ? Number(o.pos.tp) : null;
   }
 
-  function hideAllStops(o) {
-    o.slVisible = false;
-    o.tpVisible = false;
-    destroyStopOverlay(o, "sl");
-    destroyStopOverlay(o, "tp");
-  }
-
-  function showSavedStops(o) {
+  function clearStopEditing(o) {
     o.slVisible = false;
     o.tpVisible = false;
     refreshStopVisibility(o);
+  }
+
+  function endEditingOnOverlay(o) {
+    if (!o) return;
+    o.slVisible = false;
+    o.tpVisible = false;
+    refreshStopVisibility(o);
+    layoutOverlay(o);
   }
 
   function setSliderPane(pane, animate = true) {
@@ -614,10 +618,10 @@
         barMode = "full";
       } else {
         barMode = "close-only";
-        hideAllStops(o);
         setSliderPane("close");
       }
       layoutOverlay(o);
+      layoutAll();
       updateMt5PosBar(o.pos);
       notifyTicket(o);
       return;
@@ -632,15 +636,15 @@
     if (prev && prev !== id) {
       const prevO = overlays.get(prev);
       if (prevO) {
-        hideAllStops(prevO);
+        endEditingOnOverlay(prevO);
         resetOverlayEditState(prevO);
-        layoutOverlay(prevO);
       }
     }
 
     resetOverlayEditState(o);
-    showSavedStops(o);
+    clearStopEditing(o);
     layoutOverlay(o);
+    layoutAll();
     updateMt5PosBar(o.pos);
     notifyTicket(o);
   }
@@ -649,15 +653,15 @@
     if (!selectedPosId) return;
     const o = overlays.get(selectedPosId);
     if (o) {
-      hideAllStops(o);
+      endEditingOnOverlay(o);
       resetOverlayEditState(o);
       o.entryRow?.classList.remove("is-selected");
-      layoutOverlay(o);
     }
     selectedPosId = null;
     barMode = "full";
     sliderPane = "close";
     if (clearBar) updateMt5PosBar(null);
+    layoutAll();
     ctx().syncTicketStops?.({ sl: null, tp: null, slSaved: false, tpSaved: false, dragging: false });
   }
 
@@ -888,6 +892,8 @@
       overlayRoot.append(record.slRow, record.tpRow);
     } else if (prevState && (prevState.selected || selectedPosId === pos.id)) {
       if (prevState.selected) selectedPosId = pos.id;
+      refreshStopVisibility(record);
+    } else if (mt5 && (slSaved || tpSaved)) {
       refreshStopVisibility(record);
     }
 
