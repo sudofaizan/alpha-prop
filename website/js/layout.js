@@ -119,48 +119,6 @@ function renderPromo() {
     </div>`;
 }
 
-function strikeBannerHtml(warning) {
-  const isBreached = warning.kind === "breached";
-  const count = Number(warning.strike_count || 0).toFixed(2);
-  const limit = warning.strike_limit || 2;
-  const icon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`;
-  const reason = String(warning.subtitle || "").split(" · ").slice(2).join(" · ") || "Manage risk carefully";
-  const sub = isBreached
-    ? warning.subtitle
-    : `Current <span class="pt-num" style="color:#f59e0b;font-weight:700;">${count}</span> · limit <span class="pt-num">${limit}</span> · ${reason}`;
-  return `<div class="pt-banner pt-banner--warn"${isBreached ? ' style="border-color:rgba(239,68,68,0.45);"' : ""}>
-    <div class="pt-banner-icon">${icon}</div>
-    <div class="pt-banner-body">
-      <div class="pt-banner-title">${warning.title}</div>
-      <div class="pt-banner-sub">${sub}</div>
-    </div>
-  </div>`;
-}
-
-function ensureDashboardStrikeBanners(user) {
-  if (document.body.dataset.page !== "dashboard" || user?.is_admin) return;
-  const warnings = user?.risk_warnings || [];
-  if (!warnings.length) return;
-
-  const paint = () => {
-    const root = document.getElementById("portal-dashboard-root");
-    if (!root) return;
-    if (root.querySelector("[data-strike-banner]")) return;
-    const wrap = document.createElement("div");
-    wrap.className = "pt-stagger";
-    wrap.dataset.strikeBanner = "1";
-    wrap.style.cssText = "display:flex;flex-direction:column;gap:8px;margin-bottom:16px;";
-    wrap.innerHTML = warnings.map(strikeBannerHtml).join("");
-    const header = root.querySelector(".pt-header");
-    if (header) header.insertAdjacentElement("afterend", wrap);
-    else root.prepend(wrap);
-  };
-
-  paint();
-  setTimeout(paint, 600);
-  setTimeout(paint, 1500);
-}
-
 function renderSidebar(active, isAdmin) {
   const navItems = isAdmin ? ADMIN_NAV : NAV;
   const groupLabel = isAdmin ? "Administration" : "Workspace";
@@ -315,8 +273,6 @@ window.addEventListener("alphafx:user", (e) => {
   }
 
   refreshShellForUser(user);
-
-  ensureDashboardStrikeBanners(user);
 
   if (user?.is_admin || window.AlphaFXApi?.getUnreadCount) {
     if (user?.is_admin) return;
