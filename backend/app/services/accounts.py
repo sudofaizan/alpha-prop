@@ -57,6 +57,9 @@ def account_to_summary(account: ChallengeAccount) -> AccountSummary:
         max_overall_loss_pct=float(max_overall),
         daily_loss_used_pct=round(min(loss_pct, max_daily), 2),
         overall_loss_used_pct=round(min(loss_pct, max_overall), 2),
+        starting_balance=round(float(account.starting_balance), 2),
+        win_rate=round(float(account.win_rate or 0), 2),
+        total_trades=int(account.total_trades or 0),
         created_at=account.created_at.isoformat() if account.created_at else "",
     )
 
@@ -65,13 +68,16 @@ def list_user_accounts(db: Session, user_id: int, status_filter: str | None = No
     q = db.query(ChallengeAccount).filter(ChallengeAccount.user_id == user_id).order_by(ChallengeAccount.created_at.desc())
     accounts = q.all()
 
-    counts = {"all": len(accounts), "active": 0, "funded": 0, "failed": 0, "expired": 0}
+    counts = {"all": len(accounts), "active": 0, "funded": 0, "failed": 0, "expired": 0, "passed": 0}
     for a in accounts:
         if a.status in counts:
             counts[a.status] += 1
 
     if status_filter and status_filter != "all":
-        accounts = [a for a in accounts if a.status == status_filter]
+        if status_filter == "breached":
+            accounts = [a for a in accounts if a.status == "failed"]
+        else:
+            accounts = [a for a in accounts if a.status == status_filter]
 
     return AccountsListResponse(
         items=[account_to_summary(a) for a in accounts],

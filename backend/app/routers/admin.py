@@ -69,9 +69,15 @@ def _admin_user_row(db: Session, user: User) -> dict:
     }
 
 
-def _position_row(trade: SimTrade) -> dict:
+def _position_row(trade: SimTrade, *, live_pnl: float | None = None) -> dict:
     account = trade.account
     user = account.user if account else None
+    pnl = live_pnl
+    if pnl is None:
+        try:
+            pnl = sim_engine.calc_unrealized_pnl(trade)
+        except Exception:
+            pnl = 0.0
     return {
         "id": trade.id,
         "account_id": trade.account_id,
@@ -85,6 +91,7 @@ def _position_row(trade: SimTrade) -> dict:
         "entry": trade.entry_price,
         "sl": trade.stop_loss,
         "tp": trade.take_profit,
+        "pnl": round(float(pnl), 2),
         "opened": trade.opened_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S") if trade.opened_at else "—",
         "opened_time": int(trade.opened_at.timestamp()) if trade.opened_at else None,
         "margin_used": trade.margin_used,
@@ -208,14 +215,25 @@ def live_trading(_admin: User = Depends(get_admin_user), db: Session = Depends(g
 
     online_traders = sum(1 for uid in active_user_ids if _is_online(db, uid))
 
+    open_rows = []
+    total_open_pnl = 0.0
+    for trade in open_trades:
+        try:
+            pnl = sim_engine.calc_unrealized_pnl(trade)
+        except Exception:
+            pnl = 0.0
+        total_open_pnl += pnl
+        open_rows.append(_position_row(trade, live_pnl=pnl))
+
     return {
         "summary": {
             "open_positions": len(open_trades),
             "pending_orders": len(pending),
             "active_traders": len(active_user_ids),
             "online_traders": online_traders,
+            "total_open_pnl": round(total_open_pnl, 2),
         },
-        "open": [_position_row(t) for t in open_trades],
+        "open": open_rows,
         "pending": [_pending_admin_row(t) for t in pending],
     }
 

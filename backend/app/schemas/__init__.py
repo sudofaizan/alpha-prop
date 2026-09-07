@@ -79,6 +79,9 @@ class AccountSummary(BaseModel):
     max_overall_loss_pct: float
     daily_loss_used_pct: float
     overall_loss_used_pct: float
+    starting_balance: float = 0.0
+    win_rate: float = 0.0
+    total_trades: int = 0
     created_at: str
 
     model_config = {"from_attributes": True}

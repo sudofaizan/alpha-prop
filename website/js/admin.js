@@ -27,6 +27,78 @@
     window.AlphaFXLayout?.refreshShellForUser?.(window.__ALPHAFX_USER);
   }
 
+  let livePositions = [];
+  let symbolMeta = {};
+  let livePnlBound = false;
+
+  function formatPnl(n) {
+    const v = Number(n || 0);
+    if (v === 0) return money(0);
+    return (v > 0 ? "+" : "-") + money(Math.abs(v));
+  }
+
+  function pnlColor(n) {
+    const v = Number(n || 0);
+    if (v > 0) return "#86efac";
+    if (v < 0) return "#fca5a5";
+    return "var(--text)";
+  }
+
+  function pnlCell(id, pnl) {
+    const n = Number(pnl || 0);
+    return `<td class="is-num" data-admin-pnl="${id}" style="font-weight:700;color:${pnlColor(n)}">${formatPnl(n)}</td>`;
+  }
+
+  async function ensureSymbolMeta() {
+    if (Object.keys(symbolMeta).length) return;
+    const symData = await window.AlphaFXApi.getMarketSymbols();
+    Object.values(symData.groups || {}).flat().forEach((item) => {
+      symbolMeta[item.symbol] = item;
+    });
+  }
+
+  function refreshLivePnlCells() {
+    if (!livePositions.length) return;
+    let total = 0;
+    for (const p of livePositions) {
+      const tick = window.AlphaFXQuotes?.getLast(p.symbol);
+      const pnl = tick
+        ? window.AlphaFXSimPnl.positionPnl(
+            { symbol: p.symbol, side: p.side, volume: p.volume, entry: p.entry },
+            tick,
+            symbolMeta[p.symbol]
+          )
+        : Number(p.pnl || 0);
+      total += pnl;
+      const cell = document.querySelector(`[data-admin-pnl="${p.id}"]`);
+      if (cell) {
+        cell.textContent = formatPnl(pnl);
+        cell.style.color = pnlColor(pnl);
+      }
+    }
+    const totalEl = document.getElementById("admin-total-open-pnl");
+    if (totalEl) {
+      totalEl.textContent = formatPnl(total);
+      totalEl.style.color = pnlColor(total);
+    }
+  }
+
+  async function setupLiveQuotes(positions) {
+    livePositions = positions || [];
+    if (!livePositions.length) return;
+    await ensureSymbolMeta();
+    if (!livePnlBound && window.AlphaFXQuotes?.onTick) {
+      livePnlBound = true;
+      window.AlphaFXQuotes.onTick((tick) => {
+        if (activeTab !== "live") return;
+        if (livePositions.some((p) => p.symbol === tick.symbol)) refreshLivePnlCells();
+      });
+    }
+    const syms = [...new Set(livePositions.map((p) => p.symbol))];
+    window.AlphaFXQuotes?.connect?.(syms);
+    refreshLivePnlCells();
+  }
+
   const closeIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>`;
 
   function money(n) {
@@ -66,6 +138,7 @@
         <td class="${String(p.side).toLowerCase()}">${p.side}</td>
         <td>${p.volume}</td>
         <td>${p.entry}</td>
+        ${pnlCell(p.id, p.pnl)}
         <td>${p.opened || "—"}</td>
         <td><button type="button" class="admin-close-btn" data-admin-close="${p.id}" title="Close with message">${closeIcon}</button></td>
       </tr>`;
@@ -89,13 +162,15 @@
         <span class="admin-chip admin-chip--ok">${s.online_traders ?? 0} online now</span>
         <span class="admin-chip">${s.open_positions ?? 0} open positions</span>
         <span class="admin-chip">${s.pending_orders ?? 0} pending orders</span>
-        <span class="admin-muted" style="margin-left:auto;font-size:12px;">Auto-refreshes every 8s</span>
+        <span class="admin-chip admin-chip--pnl">Total open P/L: <strong id="admin-total-open-pnl" style="color:${pnlColor(s.total_open_pnl)}">${formatPnl(s.total_open_pnl ?? 0)}</strong></span>
+        <span class="admin-muted" style="margin-left:auto;font-size:12px;">Live P/L · refreshes every 8s</span>
       </div>
       <h3 class="admin-section-title">Open positions</h3>
-      ${table(["User", "Account", "Symbol", "Side", "Vol", "Entry", "Opened", ""], openRows)}
+      ${table(["User", "Account", "Symbol", "Side", "Vol", "Entry", "P/L", "Opened", ""], openRows)}
       <h3 class="admin-section-title" style="margin-top:20px;">Pending orders</h3>
       ${table(["User", "Account", "Symbol", "Type", "Side", "Vol", "Price", "Created"], pendingRows)}
     `);
+    await setupLiveQuotes(data.open || []);
   }
 
   async function renderUsers() {

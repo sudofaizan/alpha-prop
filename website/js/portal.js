@@ -3,6 +3,8 @@
  */
 (function () {
   const money = (n) => `$${Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const pct = (n, d = 2) => `${Number(n).toFixed(d)}%`;
+  let accountFilter = "all";
 
   function emptyState(title, sub, ctaHref, ctaLabel) {
     return `<div class="pt-card" style="padding:48px 32px;text-align:center;">
@@ -34,42 +36,108 @@
     return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   }
 
+  function tabBadge(count, active) {
+    const bg = active ? "rgba(255, 215, 0, 0.18)" : "rgba(255, 255, 255, 0.07)";
+    const color = active ? "var(--gold)" : "var(--text-mute)";
+    if (!count) return "";
+    return `<span style="font-family:var(--font-num);font-variant-numeric:tabular-nums;font-size:11px;font-weight:800;padding:1px 7px;border-radius:999px;background:${bg};color:${color};line-height:1.5;">${count}</span>`;
+  }
+
+  function renderAccountTabs(counts, active) {
+    const tabs = [
+      { key: "all", label: "All" },
+      { key: "active", label: "Active" },
+      { key: "funded", label: "Funded" },
+      { key: "passed", label: "Passed" },
+      { key: "breached", label: "Breached" },
+      { key: "expired", label: "Expired" },
+    ];
+    return tabs
+      .map((t) => {
+        const count = counts[t.key] ?? 0;
+        const isActive = active === t.key;
+        const dim = !count && t.key !== "all" ? " is-dim" : "";
+        const disabled = !count && t.key !== "all" ? " disabled" : "";
+        return `<button type="button" role="tab" aria-selected="${isActive ? "true" : "false"}" data-account-filter="${t.key}" class="dfx-subtab${isActive ? " is-active" : ""}${dim}" style="display:inline-flex;align-items:center;gap:7px;"${disabled}>${t.label}${tabBadge(count, isActive)}</button>`;
+      })
+      .join("");
+  }
+
+  function progBar(usedPct, limitPct) {
+    const width = limitPct > 0 ? Math.min(100, (usedPct / limitPct) * 100) : 0;
+    return `<div class="pt-acc-prog-track"><div class="pt-acc-prog-fill" style="width:${width.toFixed(1)}%;"></div></div>`;
+  }
+
   function accountCard(a) {
     const statsHref = `account-statistics.html?id=${a.id}`;
+    const start = Number(a.starting_balance || a.account_size || 0);
+    const totalPnl = Number(a.equity || 0) - start;
+    const totalPct = start ? (totalPnl / start) * 100 : 0;
+    const pnlClass = totalPnl > 0 ? "is-pos" : totalPnl < 0 ? "is-neg" : "";
+    const pnlSign = totalPnl > 0 ? "+" : totalPnl < 0 ? "-" : "";
+    const shortSize = a.account_size_label.replace("$", "");
+
     return `<article class="pt-account-card">
       <div class="pt-acc-glow" aria-hidden="true"></div>
       <div class="pt-acc-head">
         <div class="pt-acc-id">
           <div class="pt-acc-size">${a.account_size_label}</div>
           <div class="pt-acc-login">Account #${a.account_number}</div>
+          <div class="pt-acc-name">${shortSize}</div>
           <div class="pt-acc-model">${a.program_label} · ${a.account_size_label}</div>
         </div>
-        <span class="pt-acc-chip"><span class="pt-acc-chip-dot"></span>${a.phase_label}</span>
+        <span class="pt-acc-chip"><span class="pt-acc-chip-dot" aria-hidden="true"></span>${a.phase_label}</span>
       </div>
       <div class="pt-acc-wells">
-        <div class="pt-acc-well"><div class="pt-acc-well-label">Equity</div><div class="pt-acc-well-value">${money(a.equity)}</div></div>
-        <div class="pt-acc-well"><div class="pt-acc-well-label">Balance</div><div class="pt-acc-well-value">${money(a.balance)}</div></div>
-        <div class="pt-acc-well"><div class="pt-acc-well-label">Open P&amp;L</div><div class="pt-acc-well-value">${money(a.open_pnl)}</div></div>
+        <div class="pt-acc-well">
+          <div class="pt-acc-well-label">Equity</div>
+          <div class="pt-acc-well-value">${money(a.equity)}</div>
+        </div>
+        <div class="pt-acc-well">
+          <div class="pt-acc-well-label">Total P&amp;L</div>
+          <div class="pt-acc-well-value ${pnlClass}">${pnlSign}${money(Math.abs(totalPnl))}<span class="pt-acc-well-sub">(${pnlSign}${pct(Math.abs(totalPct))})</span></div>
+        </div>
+      </div>
+      <div class="pt-acc-progs">
+        <div>
+          <div class="pt-acc-prog-head">
+            <span class="pt-acc-prog-head-label">Profit target</span>
+            <span>${pct(a.profit_target_progress, 0)} / ${pct(a.profit_target_pct, 0)}</span>
+          </div>
+          ${progBar(a.profit_target_progress, a.profit_target_pct || 100)}
+        </div>
+        <div>
+          <div class="pt-acc-prog-head">
+            <span class="pt-acc-prog-head-label">Daily drawdown</span>
+            <span>${pct(a.daily_loss_used_pct, 2)} / ${pct(a.max_daily_loss_pct, 0)}</span>
+          </div>
+          ${progBar(a.daily_loss_used_pct, a.max_daily_loss_pct || 100)}
+        </div>
+        <div>
+          <div class="pt-acc-prog-head">
+            <span class="pt-acc-prog-head-label">Max drawdown</span>
+            <span>${pct(a.overall_loss_used_pct, 2)} / ${pct(a.max_overall_loss_pct, 0)}</span>
+          </div>
+          ${progBar(a.overall_loss_used_pct, a.max_overall_loss_pct || 100)}
+        </div>
       </div>
       <div class="pt-acc-actions">
-        <a class="pt-acc-btn pt-acc-btn--primary" href="${statsHref}">Statistics</a>
+        <a class="pt-acc-btn pt-acc-btn--primary" href="${statsHref}" style="text-decoration:none;text-align:center;">Statistics</a>
         <button type="button" class="pt-acc-btn" disabled>Credentials</button>
       </div>
     </article>`;
   }
 
-  async function renderAccounts() {
+  async function renderAccounts(filter = accountFilter) {
+    accountFilter = filter;
     const root = document.getElementById("portal-accounts-root");
     if (!root) return;
     root.innerHTML = `<div style="padding:24px;color:var(--text-dim);">Loading accounts…</div>`;
     try {
-      const data = await window.AlphaFXApi.getAccounts("all");
+      const data = await window.AlphaFXApi.getAccounts(filter);
       const tabs = root.closest(".dfx-scope")?.querySelector(".dfx-subtabs");
       if (tabs) {
-        tabs.innerHTML = `
-          <button type="button" class="dfx-subtab is-active">All <span class="pt-num">${data.counts.all}</span></button>
-          <button type="button" class="dfx-subtab">Active <span class="pt-num">${data.counts.active}</span></button>
-          <button type="button" class="dfx-subtab">Funded <span class="pt-num">${data.counts.funded}</span></button>`;
+        tabs.innerHTML = renderAccountTabs(data.counts, filter);
       }
       if (!data.items.length) {
         root.innerHTML = emptyState("No challenges yet", "Buy your first challenge to get a trading account.", "index.html", "Buy challenge");
@@ -204,7 +272,7 @@
 
   function bootPage() {
     const page = document.body.dataset.page;
-    if (page === "accounts") renderAccounts();
+    if (page === "accounts") renderAccounts(accountFilter);
     if (page === "dashboard") renderDashboard();
     if (page === "billing") renderBilling();
     if (page === "notifications") renderNotifications();
@@ -215,6 +283,14 @@
     await window.AlphaFXApi.markAllNotificationsRead();
     renderNotifications();
     window.dispatchEvent(new CustomEvent("alphafx:user", { detail: window.__ALPHAFX_USER }));
+  });
+
+  document.addEventListener("click", (e) => {
+    if (document.body.dataset.page !== "accounts") return;
+    const tab = e.target.closest("[data-account-filter]");
+    if (!tab || tab.disabled) return;
+    e.preventDefault();
+    renderAccounts(tab.dataset.accountFilter);
   });
 
   document.addEventListener("DOMContentLoaded", () => {
