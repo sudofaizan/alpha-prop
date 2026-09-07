@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, func
+from sqlalchemy import DateTime, Float, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -25,6 +25,7 @@ class SimTrade(Base):
     order_type: Mapped[str] = mapped_column(String(16), default="market")  # market | limit | stop
     status: Mapped[str] = mapped_column(String(16), default="open", index=True)  # pending | open | closed | cancelled
     close_reason = mapped_column(String(32), nullable=True)
+    admin_close_message = mapped_column(Text, nullable=True)
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     closed_at = mapped_column(DateTime(timezone=True), nullable=True)
 

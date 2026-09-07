@@ -111,3 +111,7 @@ class AdminUserOut(BaseModel):
 class BlockUserRequest(BaseModel):
     blocked: bool
     reason: str | None = None
+
+
+class AdminClosePositionRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=500)

@@ -9,21 +9,39 @@
   <link rel="stylesheet" href="css/capiffy/c1bee8ab903b382d.css">
   <link rel="stylesheet" href="css/fonts.css">
   <style>
-    .admin-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px}
+    .admin-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:20px}
     .admin-stat{padding:16px;border-radius:12px;background:var(--card);border:1px solid var(--border)}
     .admin-stat-label{font-size:11px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.08em}
-    .admin-stat-value{font-size:22px;font-weight:900;color:var(--gold);margin-top:4px}
-    .admin-table-wrap{overflow:auto;border:1px solid var(--border);border-radius:12px}
+    .admin-stat-value{font-size:20px;font-weight:900;color:var(--gold);margin-top:4px}
+    .admin-table-wrap{overflow:auto;border:1px solid var(--border);border-radius:12px;margin-bottom:12px}
     .admin-table{width:100%;border-collapse:collapse;font-size:13px}
-    .admin-table th,.admin-table td{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.06);text-align:left}
-    .admin-table th{font-size:11px;text-transform:uppercase;color:var(--text-mute)}
+    .admin-table th,.admin-table td{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.06);text-align:left;vertical-align:top}
+    .admin-table th{font-size:11px;text-transform:uppercase;color:var(--text-mute);white-space:nowrap}
+    .admin-table td.buy{color:#86efac}
+    .admin-table td.sell{color:#fca5a5}
     .admin-actions{display:flex;gap:8px;flex-wrap:wrap}
     .admin-btn{padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-size:12px}
     .admin-btn--danger{border-color:rgba(239,68,68,.4);color:#fca5a5}
     .admin-btn--ok{border-color:rgba(34,197,94,.4);color:#86efac}
+    .admin-btn--gold{border-color:rgba(255,215,0,.35);color:var(--gold)}
     .admin-tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
     .admin-tab{padding:8px 14px;border-radius:999px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer}
     .admin-tab.is-active{background:rgba(255,215,0,.12);border-color:rgba(255,215,0,.35);color:var(--gold)}
+    .admin-muted{color:var(--text-mute);font-size:12px}
+    .admin-section-title{font-size:16px;font-weight:800;margin:0 0 10px;color:var(--text)}
+    .admin-subtitle{font-size:13px;font-weight:700;margin:0 0 8px;color:var(--text-dim)}
+    .admin-live-summary{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+    .admin-chip{padding:6px 12px;border-radius:999px;border:1px solid var(--border);font-size:12px;color:var(--text-dim)}
+    .admin-chip--ok{border-color:rgba(34,197,94,.35);color:#86efac}
+    .admin-close-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border-radius:6px;border:1px solid rgba(239,68,68,.35);background:rgba(239,68,68,.1);color:#fca5a5;cursor:pointer}
+    .admin-close-btn:hover{background:rgba(239,68,68,.22)}
+    .admin-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--text-mute);margin-right:6px;vertical-align:middle}
+    .admin-dot--ok{background:#22c55e;box-shadow:0 0 6px rgba(34,197,94,.6)}
+    .admin-detail-head{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+    .admin-detail-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:8px}
+    .admin-detail-metrics{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--text-dim);margin-bottom:12px}
+    .admin-select{width:100%;max-width:420px;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text)}
+    .admin-field label{display:block;font-size:11px;color:var(--text-mute);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em}
   </style>
 </head>
 <body data-page="admin" data-title="Admin" data-no-wrap="true">
@@ -32,11 +50,12 @@
       <header class="pt-header"><div class="pt-header-body">
         <span class="pt-header-tag">Administration</span>
         <h1 class="pt-header-title">AlphaFX Admin</h1>
-        <p class="pt-header-sub">Manage users, block access, view orders and accounts</p>
+        <p class="pt-header-sub">Live trading oversight, user control, accounts &amp; orders</p>
       </div></header>
       <div id="admin-stats" class="admin-stats"></div>
       <div class="admin-tabs" id="admin-tabs">
-        <button type="button" class="admin-tab is-active" data-tab="users">Users</button>
+        <button type="button" class="admin-tab is-active" data-tab="live">Live trading</button>
+        <button type="button" class="admin-tab" data-tab="users">Users</button>
         <button type="button" class="admin-tab" data-tab="accounts">Accounts</button>
         <button type="button" class="admin-tab" data-tab="orders">Orders</button>
       </div>
@@ -47,6 +66,6 @@
   <script src="js/config.js"></script>
   <script src="js/api.js"></script>
   <script src="js/auth.js"></script>
-  <script src="js/admin.js"></script>
+  <script src="js/admin.js?v=20260907a"></script>
 </body>
 </html>

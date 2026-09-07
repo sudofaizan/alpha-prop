@@ -15,6 +15,8 @@ def _migrate_sim_trades() -> None:
     with engine.begin() as conn:
         if "order_type" not in cols:
             conn.execute(text("ALTER TABLE sim_trades ADD COLUMN order_type VARCHAR(16) DEFAULT 'market'"))
+        if "admin_close_message" not in cols:
+            conn.execute(text("ALTER TABLE sim_trades ADD COLUMN admin_close_message TEXT"))
 
 
 def init_db() -> None:

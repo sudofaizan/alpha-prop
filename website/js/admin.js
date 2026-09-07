@@ -1,10 +1,25 @@
 (function () {
   if (document.body.dataset.page !== "admin") return;
 
-  let activeTab = "users";
+  let activeTab = "live";
+  let liveTimer = null;
+  let userDetailId = null;
+  let userDetailAccountId = null;
+
+  const closeIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>`;
+
+  function money(n) {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return "—";
+    return `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
 
   function table(headers, rows) {
-    return `<div class="admin-table-wrap"><table class="admin-table"><thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+    return `<div class="admin-table-wrap"><table class="admin-table"><thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.length ? rows.join("") : `<tr><td colspan="${headers.length}" style="color:var(--text-mute);padding:24px;text-align:center;">Nothing here yet.</td></tr>`}</tbody></table></div>`;
+  }
+
+  function setPanel(html) {
+    document.getElementById("admin-panel").innerHTML = html;
   }
 
   async function loadStats() {
@@ -12,9 +27,54 @@
     document.getElementById("admin-stats").innerHTML = `
       <div class="admin-stat"><div class="admin-stat-label">Users</div><div class="admin-stat-value">${stats.users}</div></div>
       <div class="admin-stat"><div class="admin-stat-label">Blocked</div><div class="admin-stat-value">${stats.blocked_users}</div></div>
-      <div class="admin-stat"><div class="admin-stat-label">Accounts</div><div class="admin-stat-value">${stats.accounts}</div></div>
-      <div class="admin-stat"><div class="admin-stat-label">Orders</div><div class="admin-stat-value">${stats.orders}</div></div>
-      <div class="admin-stat"><div class="admin-stat-label">Revenue</div><div class="admin-stat-value">$${stats.revenue.toFixed(2)}</div></div>`;
+      <div class="admin-stat"><div class="admin-stat-label">Funded</div><div class="admin-stat-value">${stats.funded_accounts ?? 0}</div></div>
+      <div class="admin-stat"><div class="admin-stat-label">Open positions</div><div class="admin-stat-value">${stats.open_positions ?? 0}</div></div>
+      <div class="admin-stat"><div class="admin-stat-label">Pending orders</div><div class="admin-stat-value">${stats.pending_orders ?? 0}</div></div>
+      <div class="admin-stat"><div class="admin-stat-label">Active traders</div><div class="admin-stat-value">${stats.active_traders ?? 0}</div></div>
+      <div class="admin-stat"><div class="admin-stat-label">Revenue</div><div class="admin-stat-value">${money(stats.revenue)}</div></div>`;
+  }
+
+  async function renderLive() {
+    const data = await window.AlphaFXApi.adminLiveTrading();
+    const s = data.summary || {};
+    const openRows = (data.open || []).map((p) => {
+      return `<tr>
+        <td>${p.user_name || "—"}<br><span class="admin-muted">${p.user_email || ""}</span></td>
+        <td>#${p.account_number || p.account_id}</td>
+        <td>${p.symbol}</td>
+        <td class="${String(p.side).toLowerCase()}">${p.side}</td>
+        <td>${p.volume}</td>
+        <td>${p.entry}</td>
+        <td>${p.opened || "—"}</td>
+        <td><button type="button" class="admin-close-btn" data-admin-close="${p.id}" title="Close with message">${closeIcon}</button></td>
+      </tr>`;
+    });
+    const pendingRows = (data.pending || []).map((p) => {
+      return `<tr>
+        <td>${p.user_name || "—"}<br><span class="admin-muted">${p.user_email || ""}</span></td>
+        <td>#${p.account_number || p.account_id}</td>
+        <td>${p.symbol}</td>
+        <td>${String(p.order_type || "LIMIT")}</td>
+        <td class="${String(p.side).toLowerCase()}">${p.side}</td>
+        <td>${p.volume}</td>
+        <td>${p.price ?? p.entry}</td>
+        <td>${p.opened || "—"}</td>
+      </tr>`;
+    });
+
+    setPanel(`
+      <div class="admin-live-summary">
+        <span class="admin-chip">${s.active_traders ?? 0} traders with activity</span>
+        <span class="admin-chip admin-chip--ok">${s.online_traders ?? 0} online now</span>
+        <span class="admin-chip">${s.open_positions ?? 0} open positions</span>
+        <span class="admin-chip">${s.pending_orders ?? 0} pending orders</span>
+        <span class="admin-muted" style="margin-left:auto;font-size:12px;">Auto-refreshes every 8s</span>
+      </div>
+      <h3 class="admin-section-title">Open positions</h3>
+      ${table(["User", "Account", "Symbol", "Side", "Vol", "Entry", "Opened", ""], openRows)}
+      <h3 class="admin-section-title" style="margin-top:20px;">Pending orders</h3>
+      ${table(["User", "Account", "Symbol", "Type", "Side", "Vol", "Price", "Created"], pendingRows)}
+    `);
   }
 
   async function renderUsers() {
@@ -23,16 +83,96 @@
       const btn = u.is_blocked
         ? `<button class="admin-btn admin-btn--ok" data-unblock="${u.id}">Unblock</button>`
         : `<button class="admin-btn admin-btn--danger" data-block="${u.id}">Block</button>`;
+      const online = u.is_online ? `<span class="admin-dot admin-dot--ok"></span>Online` : `<span class="admin-dot"></span>Offline`;
       return `<tr>
-        <td>${u.full_name}<br><span style="color:var(--text-mute);font-size:12px;">${u.email}</span></td>
+        <td>${u.full_name}<br><span class="admin-muted">${u.email}</span></td>
         <td>${u.is_admin ? "Admin" : "Trader"}</td>
         <td>${u.account_count}</td>
-        <td>${u.order_count}</td>
+        <td>${u.funded_count ?? 0}</td>
+        <td>${u.open_positions ?? 0} / ${u.pending_orders ?? 0}</td>
+        <td>${online}</td>
         <td>${u.is_blocked ? `<span style="color:#fca5a5;">Blocked</span><br><small>${u.blocked_reason || ""}</small>` : "Active"}</td>
-        <td><div class="admin-actions">${u.is_admin ? "" : btn}</div></td>
+        <td><div class="admin-actions">
+          <button class="admin-btn admin-btn--gold" data-user-stats="${u.id}">Stats</button>
+          ${u.is_admin ? "" : btn}
+        </div></td>
       </tr>`;
     });
-    document.getElementById("admin-panel").innerHTML = table(["User", "Role", "Accounts", "Orders", "Status", "Actions"], rows);
+    setPanel(table(["User", "Role", "Accounts", "Funded", "Open/Pending", "Session", "Status", "Actions"], rows));
+  }
+
+  async function renderUserDetail(userId) {
+    userDetailId = userId;
+    const data = await window.AlphaFXApi.adminUser(userId);
+    const u = data.user;
+    const stats = data.stats || {};
+    const accounts = data.accounts || [];
+    if (!userDetailAccountId && accounts.length) userDetailAccountId = accounts[0].id;
+
+    const accountOptions = accounts
+      .map(
+        (a) =>
+          `<option value="${a.id}"${a.id === userDetailAccountId ? " selected" : ""}>#${a.account_number} · ${a.program_label} · ${a.status}</option>`
+      )
+      .join("");
+
+    let snapHtml = `<div class="admin-muted" style="padding:20px;">Select an account to view trades.</div>`;
+    if (userDetailAccountId) {
+      const snap = await window.AlphaFXApi.adminUserSnapshot(userId, userDetailAccountId);
+      const openRows = (snap.open || []).map((r) => {
+        return `<tr>
+          <td>${r.id}</td><td>${r.symbol}</td><td>${r.side}</td><td>${r.volume}</td>
+          <td>${r.entry}</td><td>${money(r.pnl)}</td>
+          <td><button type="button" class="admin-close-btn" data-admin-close="${r.id}" title="Close">${closeIcon}</button></td>
+        </tr>`;
+      });
+      const closedRows = (snap.closed || []).slice(0, 50).map((r) => {
+        return `<tr>
+          <td>${r.id}</td><td>${r.opened}</td><td>${r.closed}</td><td>${r.symbol}</td>
+          <td>${r.side}</td><td>${r.volume}</td><td>${r.entry}</td><td>${r.exit ?? "—"}</td>
+          <td>${money(r.pnl)}</td><td>${r.reason ?? "—"}</td>
+        </tr>`;
+      });
+      snapHtml = `
+        <div class="admin-detail-metrics">
+          <span>Equity ${money(snap.account?.equity)}</span>
+          <span>Balance ${money(snap.account?.balance)}</span>
+          <span>Open P/L ${money(snap.metrics?.open_pnl)}</span>
+          <span>${snap.counts?.open ?? 0} open · ${snap.counts?.pending ?? 0} pending · ${snap.counts?.closed ?? 0} closed</span>
+        </div>
+        <h4 class="admin-subtitle">Open positions</h4>
+        ${table(["ID", "Symbol", "Side", "Vol", "Entry", "P/L", ""], openRows)}
+        <h4 class="admin-subtitle" style="margin-top:16px;">Recent closed trades</h4>
+        ${table(["ID", "Opened", "Closed", "Symbol", "Side", "Vol", "Entry", "Exit", "P/L", "Reason"], closedRows)}
+      `;
+    }
+
+    const btn = u.is_blocked
+      ? `<button class="admin-btn admin-btn--ok" data-unblock="${u.id}">Unblock user</button>`
+      : `<button class="admin-btn admin-btn--danger" data-block="${u.id}">Block user</button>`;
+
+    setPanel(`
+      <div class="admin-detail-head">
+        <button type="button" class="admin-btn" data-admin-back>← Back to users</button>
+        <div>
+          <h2 class="admin-section-title">${u.full_name}</h2>
+          <p class="admin-muted">${u.email} · ${u.is_blocked ? "Blocked" : "Active"} · ${u.is_online ? "Online" : "Offline"}</p>
+        </div>
+        <div class="admin-actions">${u.is_admin ? "" : btn}</div>
+      </div>
+      <div class="admin-detail-stats">
+        <div class="admin-stat"><div class="admin-stat-label">Accounts</div><div class="admin-stat-value">${u.account_count}</div></div>
+        <div class="admin-stat"><div class="admin-stat-label">Funded</div><div class="admin-stat-value">${stats.funded_accounts ?? u.funded_count ?? 0}</div></div>
+        <div class="admin-stat"><div class="admin-stat-label">Open / Pending</div><div class="admin-stat-value">${stats.open_positions ?? 0} / ${stats.pending_orders ?? 0}</div></div>
+        <div class="admin-stat"><div class="admin-stat-label">Closed trades</div><div class="admin-stat-value">${stats.closed_trades ?? 0}</div></div>
+        <div class="admin-stat"><div class="admin-stat-label">Realised P/L</div><div class="admin-stat-value">${money(stats.realised_pnl ?? 0)}</div></div>
+      </div>
+      <div class="admin-field" style="margin:16px 0;">
+        <label for="admin-account-select">Account</label>
+        <select id="admin-account-select" class="admin-select">${accountOptions || `<option value="">No accounts</option>`}</select>
+      </div>
+      <div id="admin-user-snap">${snapHtml}</div>
+    `);
   }
 
   async function renderAccounts() {
@@ -40,14 +180,15 @@
     const rows = data.items.map(
       (a) => `<tr>
         <td>#${a.account_number}</td>
-        <td>${a.user_email || a.user_id}</td>
+        <td>${a.user_name || a.user_email || a.user_id}</td>
         <td>${a.program_label} · ${a.account_size_label}</td>
         <td>${a.phase_label}</td>
         <td>${a.status}</td>
-        <td>$${a.equity.toFixed(2)}</td>
+        <td>${money(a.equity)}</td>
+        <td><button class="admin-btn admin-btn--gold" data-user-stats="${a.user_id}">User stats</button></td>
       </tr>`
     );
-    document.getElementById("admin-panel").innerHTML = table(["Account", "User", "Plan", "Phase", "Status", "Equity"], rows);
+    setPanel(table(["Account", "User", "Plan", "Phase", "Status", "Equity", ""], rows));
   }
 
   async function renderOrders() {
@@ -57,53 +198,120 @@
         <td>#${o.id}</td>
         <td>${o.user_email || o.user_id}</td>
         <td>${o.program} · $${o.account_size}</td>
-        <td>$${o.amount.toFixed(2)}</td>
+        <td>${money(o.amount)}</td>
         <td>${o.payment_method}</td>
         <td>${o.account_number || "—"}</td>
       </tr>`
     );
-    document.getElementById("admin-panel").innerHTML = table(["Order", "User", "Plan", "Amount", "Method", "Account"], rows);
+    setPanel(table(["Order", "User", "Plan", "Amount", "Method", "Account"], rows));
+  }
+
+  function stopLiveTimer() {
+    if (liveTimer) {
+      clearInterval(liveTimer);
+      liveTimer = null;
+    }
+  }
+
+  function startLiveTimer() {
+    stopLiveTimer();
+    if (activeTab === "live") {
+      liveTimer = setInterval(() => renderLive().catch(console.error), 8000);
+    }
   }
 
   async function renderTab() {
-    document.getElementById("admin-panel").innerHTML = `<div style="padding:20px;color:var(--text-dim);">Loading…</div>`;
+    stopLiveTimer();
+    userDetailId = null;
+    setPanel(`<div style="padding:20px;color:var(--text-dim);">Loading…</div>`);
+    if (activeTab === "live") {
+      await renderLive();
+      startLiveTimer();
+    }
     if (activeTab === "users") await renderUsers();
     if (activeTab === "accounts") await renderAccounts();
     if (activeTab === "orders") await renderOrders();
+  }
+
+  async function adminCloseTrade(tradeId) {
+    const message = prompt("Close reason (shown to user as BY ADMIN: …):");
+    if (!message || !message.trim()) return;
+    try {
+      const res = await window.AlphaFXApi.adminClosePosition(tradeId, message.trim());
+      alert(res.message || "Position closed");
+      await loadStats();
+      if (userDetailId) await renderUserDetail(userDetailId);
+      else if (activeTab === "live") await renderLive();
+      else await renderTab();
+    } catch (err) {
+      alert(err.message || "Close failed");
+    }
   }
 
   document.getElementById("admin-tabs")?.addEventListener("click", (e) => {
     const btn = e.target.closest(".admin-tab");
     if (!btn) return;
     activeTab = btn.dataset.tab;
+    userDetailId = null;
+    userDetailAccountId = null;
     document.querySelectorAll(".admin-tab").forEach((t) => t.classList.toggle("is-active", t === btn));
-    renderTab();
+    renderTab().catch(console.error);
   });
 
   document.getElementById("admin-panel")?.addEventListener("click", async (e) => {
+    const closeBtn = e.target.closest("[data-admin-close]");
+    if (closeBtn) {
+      adminCloseTrade(Number(closeBtn.dataset.adminClose));
+      return;
+    }
+    const statsBtn = e.target.closest("[data-user-stats]");
+    if (statsBtn) {
+      activeTab = "users";
+      userDetailAccountId = null;
+      document.querySelectorAll(".admin-tab").forEach((t) => t.classList.toggle("is-active", t.dataset.tab === "users"));
+      await renderUserDetail(Number(statsBtn.dataset.userStats));
+      return;
+    }
+    if (e.target.closest("[data-admin-back]")) {
+      userDetailId = null;
+      userDetailAccountId = null;
+      await renderUsers();
+      return;
+    }
     const blockId = e.target.dataset.block;
     const unblockId = e.target.dataset.unblock;
     if (blockId) {
       const reason = prompt("Block reason (optional):") || "Blocked by admin";
       await window.AlphaFXApi.adminBlockUser(blockId, true, reason);
       await loadStats();
-      await renderTab();
+      if (userDetailId) await renderUserDetail(userDetailId);
+      else await renderTab();
     }
     if (unblockId) {
       await window.AlphaFXApi.adminBlockUser(unblockId, false, null);
       await loadStats();
-      await renderTab();
+      if (userDetailId) await renderUserDetail(userDetailId);
+      else await renderTab();
     }
   });
 
-  document.addEventListener("DOMContentLoaded", async () => {
+  document.getElementById("admin-panel")?.addEventListener("change", async (e) => {
+    if (e.target.id === "admin-account-select" && userDetailId) {
+      userDetailAccountId = Number(e.target.value) || null;
+      await renderUserDetail(userDetailId);
+    }
+  });
+
+  document.addEventListener("DOMContentLoaded", () => {
     setTimeout(async () => {
       try {
         await loadStats();
         await renderTab();
       } catch (err) {
-        document.getElementById("admin-panel").innerHTML = `<div class="pt-card" style="padding:20px;color:var(--danger);">${err.message}</div>`;
+        setPanel(`<div class="pt-card" style="padding:20px;color:var(--danger);">${err.message}</div>`);
       }
     }, 200);
   });
+
+  window.addEventListener("beforeunload", stopLiveTimer);
 })();

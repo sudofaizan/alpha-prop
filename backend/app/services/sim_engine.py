@@ -139,6 +139,15 @@ def refresh_account_metrics(db: Session, account: ChallengeAccount) -> Challenge
     return account
 
 
+def _display_close_reason(trade: SimTrade) -> str:
+    if trade.status != "closed":
+        return trade.close_reason or ("open" if trade.status == "open" else "—")
+    if (trade.close_reason or "") == "admin" and trade.admin_close_message:
+        return f"BY ADMIN: {trade.admin_close_message.strip()}"
+    labels = {"manual": "manual", "sl": "stop loss", "tp": "take profit", "cancelled": "cancelled"}
+    return labels.get(trade.close_reason or "", trade.close_reason or "—")
+
+
 def trade_row(trade: SimTrade, *, live_pnl: float | None = None) -> dict:
     pnl = live_pnl if live_pnl is not None else trade.pnl
     opened_time = None
@@ -159,7 +168,7 @@ def trade_row(trade: SimTrade, *, live_pnl: float | None = None) -> dict:
         "closed": _fmt_dt(trade.closed_at),
         "closed_time": closed_time,
         "pnl": pnl,
-        "reason": trade.close_reason or ("open" if trade.status == "open" else "—"),
+        "reason": _display_close_reason(trade),
         "sl": trade.stop_loss,
         "tp": trade.take_profit,
         "margin_used": trade.margin_used,
@@ -503,13 +512,21 @@ def open_market_order(
 
 def close_position(
     db: Session,
-    user_id: int,
     account_id: int,
     trade_id: int,
     reason: str = "manual",
     exit_price: float | None = None,
+    *,
+    user_id: int | None = None,
+    admin_message: str | None = None,
 ) -> SimTrade:
-    account = _require_account(db, user_id, account_id)
+    if user_id is not None:
+        account = _require_account(db, user_id, account_id)
+    else:
+        account = db.query(ChallengeAccount).filter(ChallengeAccount.id == account_id).one_or_none()
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+
     trade = (
         db.query(SimTrade)
         .filter(SimTrade.id == trade_id, SimTrade.account_id == account.id, SimTrade.status == "open")
@@ -531,7 +548,12 @@ def close_position(
     trade.exit_price = exit_px
     trade.pnl = pnl
     trade.status = "closed"
-    trade.close_reason = reason
+    if admin_message:
+        trade.close_reason = "admin"
+        trade.admin_close_message = admin_message.strip()[:500]
+    else:
+        trade.close_reason = reason
+        trade.admin_close_message = None
     trade.closed_at = _utcnow()
 
     account.balance = round(account.balance + pnl, 2)
@@ -544,6 +566,27 @@ def close_position(
     _update_trade_stats(db, account)
     db.commit()
     return trade
+
+
+def admin_close_position(db: Session, trade_id: int, message: str) -> tuple[SimTrade, ChallengeAccount]:
+    trade = (
+        db.query(SimTrade)
+        .filter(SimTrade.id == trade_id, SimTrade.status == "open")
+        .one_or_none()
+    )
+    if not trade:
+        raise HTTPException(status_code=404, detail="Open position not found")
+    account = db.query(ChallengeAccount).filter(ChallengeAccount.id == trade.account_id).one_or_none()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    closed = close_position(
+        db,
+        account.id,
+        trade_id,
+        reason="admin",
+        admin_message=message,
+    )
+    return closed, account
 
 
 def update_position_stops(

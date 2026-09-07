@@ -63,6 +63,15 @@
     checkoutPay: (body) => request("/api/v1/checkout/pay", { method: "POST", body: JSON.stringify(body) }),
     adminStats: () => request("/api/v1/admin/stats"),
     adminUsers: () => request("/api/v1/admin/users"),
+    adminUser: (id) => request(`/api/v1/admin/users/${id}`),
+    adminUserSnapshot: (userId, accountId) =>
+      request(`/api/v1/admin/users/${userId}/snapshot?account_id=${encodeURIComponent(accountId)}`),
+    adminLiveTrading: () => request("/api/v1/admin/trading/live"),
+    adminClosePosition: (tradeId, message) =>
+      request(`/api/v1/admin/positions/${tradeId}/close`, {
+        method: "POST",
+        body: JSON.stringify({ message }),
+      }),
     adminAccounts: () => request("/api/v1/admin/accounts"),
     adminOrders: () => request("/api/v1/admin/orders"),
     adminBlockUser: (id, blocked, reason) =>
