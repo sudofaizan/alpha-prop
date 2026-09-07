@@ -10,6 +10,29 @@
   <link rel="stylesheet" href="css/capiffy/3ac04c147fc81d91.css">
   <link rel="stylesheet" href="css/capiffy/3c6a7efccbedf43f.css">
   <link rel="stylesheet" href="css/fonts.css">
+  <style>
+    .stat-close-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border-radius: 6px;
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--danger, #ef4444);
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .stat-close-btn:hover:not(:disabled) {
+      background: rgba(239, 68, 68, 0.22);
+    }
+    .stat-close-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+  </style>
 </head>
 <body data-page="account-stats" data-title="Account Statistics" data-no-wrap="true">
   <div id="app-root">
@@ -21,6 +44,7 @@
   <script src="js/auth.js"></script>
   <script src="js/ws-quotes.js"></script>
   <script src="js/sim-pnl.js"></script>
-  <script src="js/account-stats.js?v=20260907a"></script>
+  <script src="js/trade-toast.js"></script>
+  <script src="js/account-stats.js?v=20260907b"></script>
 </body>
 </html>

@@ -17,6 +17,13 @@
   let symbolMeta = {};
   let liveRaf = null;
   let accountId = null;
+  let closeBusy = false;
+
+  const closeIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"></path></svg>`;
+
+  function toast(msg, type) {
+    window.AlphaFXToast?.show?.(msg, type) || console.log(msg);
+  }
 
   function fmtTradeDate(value, epochSec) {
     const d = epochSec ? new Date(epochSec * 1000) : new Date(String(value || "").replace(" ", "T") + "Z");
@@ -166,7 +173,7 @@
       <thead><tr>
         <th>Opened</th><th class="is-num">Duration</th><th>Symbol</th><th>Side</th>
         <th class="is-num">Size</th><th class="is-num">Entry</th><th class="is-num">SL</th><th class="is-num">TP</th>
-        <th class="is-num" style="text-align:right;">P&amp;L</th><th>Reason</th>
+        <th class="is-num" style="text-align:right;">P&amp;L</th><th>Reason</th><th></th>
       </tr></thead>
       <tbody>${rows
         .map((r) => {
@@ -183,6 +190,7 @@
             <td class="is-num">${fmt(r.tp)}</td>
             <td class="is-num" data-stat-pnl="${r.id}" style="text-align:right;font-weight:700;color:${Number(pnl) >= 0 ? "var(--success)" : Number(pnl) < 0 ? "var(--danger)" : "var(--text)"};">${(Number(pnl) >= 0 ? "+" : "") + money(pnl)}</td>
             <td>${r.reason ?? "open"}</td>
+            <td style="text-align:center;"><button type="button" class="stat-close-btn" data-stat-close="${r.id}" aria-label="Close position" title="Close position"${closeBusy ? " disabled" : ""}>${closeIcon}</button></td>
           </tr>`;
         })
         .join("")}</tbody></table></div>`;
@@ -301,6 +309,34 @@
     refreshLive();
   }
 
+  async function closePosition(tradeId) {
+    if (!accountId || closeBusy) return;
+    closeBusy = true;
+    document.querySelectorAll("[data-stat-close]").forEach((btn) => {
+      btn.disabled = true;
+    });
+    try {
+      await window.AlphaFXApi.request(`/api/v1/trade/positions/${tradeId}/close`, {
+        method: "POST",
+        body: JSON.stringify({ account_id: Number(accountId) }),
+      });
+      toast("Position closed", "success");
+      await reloadSnapshot();
+    } catch (err) {
+      toast(err?.message || "Close failed", "error");
+    } finally {
+      closeBusy = false;
+    }
+  }
+
+  function bindCloseActions(scope) {
+    scope.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-stat-close]");
+      if (!btn || closeBusy) return;
+      closePosition(Number(btn.dataset.statClose));
+    });
+  }
+
   async function boot() {
     const params = new URLSearchParams(window.location.search);
     accountId = params.get("id");
@@ -322,6 +358,7 @@
         symbolMeta[item.symbol] = item;
       });
       render(scope, a, snap);
+      bindCloseActions(scope);
 
       const symbols = [
         ...new Set([...(snap.open || []), ...(snap.pending || [])].map((p) => p.symbol)),
