@@ -1,18 +1,31 @@
 /**
- * Open position overlays on Lightweight Charts — entry / SL / TP lines with drag.
+ * Open position overlays — Capify-exact entry / SL / TP lines + floating pill.
  */
 (function () {
-  const HIT_PX = 14;
+  const HIT_PX = 16;
   const LC = () => window.LightweightCharts;
+
+  const COLORS = {
+    entry: "#22d3ee",
+    entryAxis: "#22d3ee",
+    entryText: "#0f172a",
+    sl: "#ef4444",
+    slAxis: "#ef4444",
+    slText: "#ffffff",
+    tp: "#22c55e",
+    tpAxis: "#22c55e",
+    tpText: "#ffffff",
+  };
 
   let chart = null;
   let series = null;
   let container = null;
+  let overlayRoot = null;
   let getContext = null;
   let overlays = new Map();
   let pendingOverlays = new Map();
   let drag = null;
-  let bound = false;
+  let rangeSubscribed = false;
 
   function ctx() {
     return getContext?.() || {};
@@ -23,33 +36,27 @@
     return fn ? fn(symbol, value) : Number(value).toFixed(2);
   }
 
-  function defaultOffset(symbol) {
-    const meta = ctx().symbolMeta?.[symbol];
-    const tick = meta?.tick_size || 0.01;
-    if (symbol === "XAUUSD") return tick * 200;
-    if (symbol === "BTCUSD") return tick * 500;
-    if (symbol === "USDJPY") return tick * 200;
-    return tick * 150;
+  function hasSl(pos) {
+    return pos.sl != null && pos.sl !== "";
   }
 
-  function defaultSl(pos) {
-    const entry = Number(pos.entry);
-    const off = defaultOffset(pos.symbol);
-    return String(pos.side).toUpperCase() === "BUY" ? entry - off : entry + off;
-  }
-
-  function defaultTp(pos) {
-    const entry = Number(pos.entry);
-    const off = defaultOffset(pos.symbol);
-    return String(pos.side).toUpperCase() === "BUY" ? entry + off : entry - off;
+  function hasTp(pos) {
+    return pos.tp != null && pos.tp !== "";
   }
 
   function slPrice(pos) {
-    return pos.sl != null && pos.sl !== "" ? Number(pos.sl) : defaultSl(pos);
+    return hasSl(pos) ? Number(pos.sl) : null;
   }
 
   function tpPrice(pos) {
-    return pos.tp != null && pos.tp !== "" ? Number(pos.tp) : defaultTp(pos);
+    return hasTp(pos) ? Number(pos.tp) : null;
+  }
+
+  function fmtPnl(pnl) {
+    const n = Number(pnl || 0);
+    if (n === 0) return "$0.00";
+    const sign = n > 0 ? "+" : "-";
+    return `${sign}$${Math.abs(n).toFixed(2)}`;
   }
 
   function chartY(clientY) {
@@ -58,26 +65,25 @@
     return clientY - rect.top;
   }
 
+  function priceY(price) {
+    if (!series || price == null) return null;
+    const y = series.priceToCoordinate(price);
+    return y == null ? null : y;
+  }
+
   function hitLine(y, price) {
-    if (!series || y == null || price == null) return false;
-    const py = series.priceToCoordinate(price);
+    if (price == null) return false;
+    const py = priceY(price);
     if (py == null) return false;
     return Math.abs(y - py) <= HIT_PX;
   }
 
   function findHit(y) {
     for (const [id, o] of overlays) {
-      if (hitLine(y, o.slVal)) return { id, kind: "sl" };
-      if (hitLine(y, o.tpVal)) return { id, kind: "tp" };
+      if (o.slVal != null && hitLine(y, o.slVal)) return { id, kind: "sl" };
+      if (o.tpVal != null && hitLine(y, o.tpVal)) return { id, kind: "tp" };
     }
     return null;
-  }
-
-  function entryTitle(pos) {
-    const pnl = Number(pos.pnl || 0);
-    if (pnl === 0) return `${pos.side} ${pos.volume} · $0.00`;
-    const sign = pnl > 0 ? "+" : "-";
-    return `${pos.side} ${pos.volume} · ${sign}$${Math.abs(pnl).toFixed(2)}`;
   }
 
   function removePendingOverlay(id) {
@@ -91,6 +97,12 @@
     pendingOverlays.delete(id);
   }
 
+  function removeOverlayDom(o) {
+    o.entryRow?.remove();
+    o.slRow?.remove();
+    o.tpRow?.remove();
+  }
+
   function removeOverlay(id) {
     const o = overlays.get(id);
     if (!o || !series) return;
@@ -101,6 +113,7 @@
     } catch {
       /* ignore */
     }
+    removeOverlayDom(o);
     overlays.delete(id);
   }
 
@@ -108,66 +121,141 @@
     for (const id of [...overlays.keys()]) removeOverlay(id);
     for (const id of [...pendingOverlays.keys()]) removePendingOverlay(id);
     drag = null;
-    if (series) {
-      try {
-        series.setMarkers([]);
-      } catch {
-        /* ignore */
-      }
-    }
+    if (overlayRoot) overlayRoot.innerHTML = "";
   }
 
-  function createLine(price, color, style, title, axisLabelVisible = true) {
+  function createLine(price, color, style, axisColor, textColor) {
     return series.createPriceLine({
       price,
       color,
-      lineWidth: 2,
+      lineWidth: 1,
       lineStyle: style,
-      axisLabelVisible,
-      title,
+      axisLabelVisible: true,
+      title: "",
+      axisLabelColor: axisColor,
+      axisLabelTextColor: textColor,
     });
   }
 
+  function buildEntryPill(pos) {
+    const pnl = Number(pos.pnl || 0);
+    const pnlCls = pnl > 0 ? "positive" : pnl < 0 ? "negative" : "";
+    const row = document.createElement("div");
+    row.className = "cpf-pos-row cpf-pos-row--entry";
+    row.dataset.posId = String(pos.id);
+    row.innerHTML = `
+      <div class="cpf-entry-pill">
+        <span class="cpf-entry-vol">${pos.volume}</span>
+        <span class="cpf-entry-sep" aria-hidden="true"></span>
+        <span class="cpf-entry-pnl ${pnlCls}">${fmtPnl(pnl)}</span>
+        <button type="button" class="cpf-entry-close" data-close-pos="${pos.id}" aria-label="Close position">×</button>
+      </div>
+    `;
+    row.querySelector("[data-close-pos]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      ctx().closePosition?.(pos.id);
+    });
+    return row;
+  }
+
+  function buildTag(kind, posId) {
+    const row = document.createElement("div");
+    row.className = `cpf-pos-row cpf-pos-row--${kind}`;
+    row.dataset.posId = String(posId);
+    row.dataset.kind = kind;
+    row.innerHTML = `<span class="cpf-pos-tag cpf-pos-tag--${kind}">${kind.toUpperCase()}</span>`;
+    return row;
+  }
+
+  function layoutOverlay(o) {
+    if (!o.dom) return;
+    const entryY = priceY(Number(o.pos.entry));
+    if (entryY != null && o.entryRow) {
+      o.entryRow.style.top = `${entryY}px`;
+      o.entryRow.style.display = "";
+    } else if (o.entryRow) {
+      o.entryRow.style.display = "none";
+    }
+
+    const slY = o.slVal != null ? priceY(o.slVal) : null;
+    if (slY != null && o.slRow) {
+      o.slRow.style.top = `${slY}px`;
+      o.slRow.style.display = "";
+    } else if (o.slRow) {
+      o.slRow.style.display = "none";
+    }
+
+    const tpY = o.tpVal != null ? priceY(o.tpVal) : null;
+    if (tpY != null && o.tpRow) {
+      o.tpRow.style.top = `${tpY}px`;
+      o.tpRow.style.display = "";
+    } else if (o.tpRow) {
+      o.tpRow.style.display = "none";
+    }
+  }
+
+  function layoutAll() {
+    for (const o of overlays.values()) layoutOverlay(o);
+  }
+
+  function ensureRangeSub() {
+    if (!chart || rangeSubscribed) return;
+    rangeSubscribed = true;
+    chart.timeScale().subscribeVisibleLogicalRangeChange(() => layoutAll());
+  }
+
   function upsertOverlay(pos) {
-    if (!series) return;
+    if (!series || !overlayRoot) return;
     removeOverlay(pos.id);
 
-    const isBuy = String(pos.side).toUpperCase() === "BUY";
     const entry = Number(pos.entry);
     const sl = slPrice(pos);
     const tp = tpPrice(pos);
-    const slSaved = pos.sl != null && pos.sl !== "";
-    const tpSaved = pos.tp != null && pos.tp !== "";
 
     const entryLine = createLine(
       entry,
-      isBuy ? "#22c55e" : "#ef4444",
+      COLORS.entry,
       LC().LineStyle.Solid,
-      entryTitle(pos)
-    );
-    const slLine = createLine(
-      sl,
-      "#ef4444",
-      slSaved ? LC().LineStyle.Dashed : LC().LineStyle.Dotted,
-      slSaved ? `SL ${fmtPrice(pos.symbol, sl)}` : `SL · drag`
-    );
-    const tpLine = createLine(
-      tp,
-      "#22c55e",
-      tpSaved ? LC().LineStyle.Dashed : LC().LineStyle.Dotted,
-      tpSaved ? `TP ${fmtPrice(pos.symbol, tp)}` : `TP · drag`
+      COLORS.entryAxis,
+      COLORS.entryText
     );
 
-    overlays.set(pos.id, {
+    let slLine = null;
+    let tpLine = null;
+    if (sl != null) {
+      slLine = createLine(sl, COLORS.sl, LC().LineStyle.Solid, COLORS.slAxis, COLORS.slText);
+    }
+    if (tp != null) {
+      tpLine = createLine(tp, COLORS.tp, LC().LineStyle.Solid, COLORS.tpAxis, COLORS.tpText);
+    }
+
+    const entryRow = buildEntryPill(pos);
+    overlayRoot.appendChild(entryRow);
+
+    let slRow = null;
+    let tpRow = null;
+    if (sl != null) {
+      slRow = buildTag("sl", pos.id);
+      overlayRoot.appendChild(slRow);
+    }
+    if (tp != null) {
+      tpRow = buildTag("tp", pos.id);
+      overlayRoot.appendChild(tpRow);
+    }
+
+    const record = {
       pos,
       entryLine,
       slLine,
       tpLine,
       slVal: sl,
       tpVal: tp,
-      slSaved,
-      tpSaved,
-    });
+      entryRow,
+      slRow,
+      tpRow,
+    };
+    overlays.set(pos.id, record);
+    layoutOverlay(record);
   }
 
   function upsertPendingOverlay(p) {
@@ -177,54 +265,16 @@
     const price = Number(p.price);
     const ot = String(p.order_type || "LIMIT").toUpperCase();
     const color = ot === "LIMIT" ? "#eab308" : "#f97316";
-    const title = `${ot} ${p.side} ${p.volume} @ ${fmtPrice(p.symbol, price)}`;
-    const line = createLine(price, color, LC().LineStyle.Dotted, title);
+    const line = series.createPriceLine({
+      price,
+      color,
+      lineWidth: 1,
+      lineStyle: LC().LineStyle.Dotted,
+      axisLabelVisible: true,
+      title: `${ot} ${p.side} ${p.volume}`,
+    });
 
     pendingOverlays.set(p.id, { pos: p, line, priceVal: price });
-  }
-
-  function syncMarkers(positions) {
-    if (!series || !positions.length) {
-      try {
-        series?.setMarkers([]);
-      } catch {
-        /* ignore */
-      }
-      return;
-    }
-
-    function snapTime(t) {
-      const bars = ctx().barBuffer || [];
-      if (!bars.length || !t) return t || ctx().fallbackTime?.();
-      if (bars.some((b) => b.time === t)) return t;
-      let best = bars[0].time;
-      for (const b of bars) {
-        if (b.time <= t) best = b.time;
-        else break;
-      }
-      return best;
-    }
-
-    const markers = positions
-      .map((pos) => {
-        const t = snapTime(pos.opened_time);
-        if (!t) return null;
-        const isBuy = String(pos.side).toUpperCase() === "BUY";
-        return {
-          time: t,
-          position: isBuy ? "belowBar" : "aboveBar",
-          color: isBuy ? "#22c55e" : "#ef4444",
-          shape: isBuy ? "arrowUp" : "arrowDown",
-          text: `${pos.side} ${pos.volume}`,
-        };
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.time - b.time);
-    try {
-      series.setMarkers(markers);
-    } catch {
-      /* ignore */
-    }
   }
 
   function sync() {
@@ -236,20 +286,21 @@
     const pendingOrders = pending.filter((p) => p.symbol === activeSymbol);
     positions.forEach(upsertOverlay);
     pendingOrders.forEach(upsertPendingOverlay);
-    syncMarkers(positions);
+    ensureRangeSub();
   }
 
   function updateLivePnl() {
-    if (!series) return;
     const { open = [] } = ctx();
     for (const [id, o] of overlays) {
       const live = open.find((p) => p.id === id);
-      if (!live || !o.entryLine) continue;
-      try {
-        o.entryLine.applyOptions({ title: entryTitle(live) });
-      } catch {
-        /* ignore */
-      }
+      if (!live || !o.entryRow) continue;
+      const pnlEl = o.entryRow.querySelector(".cpf-entry-pnl");
+      if (!pnlEl) continue;
+      const pnl = Number(live.pnl || 0);
+      pnlEl.textContent = fmtPnl(pnl);
+      pnlEl.classList.toggle("positive", pnl > 0);
+      pnlEl.classList.toggle("negative", pnl < 0);
+      o.pos = live;
     }
   }
 
@@ -257,22 +308,31 @@
     const o = overlays.get(drag.id);
     if (!o) return;
     const sym = o.pos.symbol;
-    const rounded = Number(fmtPrice(sym, price));
+    const exact = Number(price);
     if (kind === "sl") {
-      o.slVal = rounded;
-      o.slLine.applyOptions({
-        price: rounded,
-        title: `SL ${fmtPrice(sym, rounded)}`,
-        lineStyle: LC().LineStyle.Dashed,
-      });
+      o.slVal = exact;
+      if (o.slLine) {
+        o.slLine.applyOptions({ price: exact });
+      } else {
+        o.slLine = createLine(exact, COLORS.sl, LC().LineStyle.Solid, COLORS.slAxis, COLORS.slText);
+      }
+      if (!o.slRow && overlayRoot) {
+        o.slRow = buildTag("sl", o.pos.id);
+        overlayRoot.appendChild(o.slRow);
+      }
     } else {
-      o.tpVal = rounded;
-      o.tpLine.applyOptions({
-        price: rounded,
-        title: `TP ${fmtPrice(sym, rounded)}`,
-        lineStyle: LC().LineStyle.Dashed,
-      });
+      o.tpVal = exact;
+      if (o.tpLine) {
+        o.tpLine.applyOptions({ price: exact });
+      } else {
+        o.tpLine = createLine(exact, COLORS.tp, LC().LineStyle.Solid, COLORS.tpAxis, COLORS.tpText);
+      }
+      if (!o.tpRow && overlayRoot) {
+        o.tpRow = buildTag("tp", o.pos.id);
+        overlayRoot.appendChild(o.tpRow);
+      }
     }
+    layoutOverlay(o);
   }
 
   async function persistStops(id, kind) {
@@ -296,8 +356,8 @@
         row.sl = o.slVal;
         row.tp = o.tpVal;
       }
-      o.slSaved = true;
-      o.tpSaved = true;
+      o.pos.sl = o.slVal;
+      o.pos.tp = o.tpVal;
       const sym = o.pos.symbol;
       const msg =
         kind === "sl"
@@ -308,11 +368,28 @@
       window.AlphaFXToast?.show(msg, "success");
     } catch (e) {
       window.AlphaFXToast?.show(e?.message || "Could not save stops", "error");
+      sync();
     }
   }
 
-  function onMouseDown(ev) {
+  function onPointerDown(ev) {
     if (!series || !chart || drag) return;
+    const tag = ev.target.closest(".cpf-pos-tag");
+    if (tag) {
+      const row = tag.closest(".cpf-pos-row");
+      const id = Number(row?.dataset.posId);
+      const kind = row?.dataset.kind;
+      if (id && (kind === "sl" || kind === "tp")) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        drag = { id, kind, pointerId: ev.pointerId };
+        document.body.style.cursor = "ns-resize";
+        chart.applyOptions({ handleScroll: false, handleScale: false });
+        overlayRoot?.setPointerCapture?.(ev.pointerId);
+        return;
+      }
+    }
+
     const y = chartY(ev.clientY);
     const hit = findHit(y);
     if (!hit) return;
@@ -324,7 +401,7 @@
     container?.setPointerCapture?.(ev.pointerId);
   }
 
-  function onMouseMove(ev) {
+  function onPointerMove(ev) {
     if (!drag || !series) return;
     const y = chartY(ev.clientY);
     if (y == null) return;
@@ -344,7 +421,7 @@
     applyDragPrice(drag.kind, price);
   }
 
-  function onMouseUp(ev) {
+  function onPointerUp(ev) {
     if (!drag) return;
     const { id, kind, pointerId } = drag;
     drag = null;
@@ -352,19 +429,32 @@
     chart?.applyOptions({ handleScroll: true, handleScale: true });
     try {
       container?.releasePointerCapture?.(pointerId);
+      overlayRoot?.releasePointerCapture?.(pointerId);
     } catch {
       /* ignore */
     }
     persistStops(id, kind);
   }
 
+  let dragHost = null;
+
   function bindDrag() {
-    if (!container || bound) return;
-    bound = true;
-    container.addEventListener("pointerdown", onMouseDown);
-    container.addEventListener("pointermove", onMouseMove);
-    container.addEventListener("pointerup", onMouseUp);
-    container.addEventListener("pointercancel", onMouseUp);
+    if (dragHost) return;
+    dragHost = overlayRoot?.parentElement || container;
+    if (!dragHost) return;
+    dragHost.addEventListener("pointerdown", onPointerDown);
+    dragHost.addEventListener("pointermove", onPointerMove);
+    dragHost.addEventListener("pointerup", onPointerUp);
+    dragHost.addEventListener("pointercancel", onPointerUp);
+  }
+
+  function unbindDrag() {
+    if (!dragHost) return;
+    dragHost.removeEventListener("pointerdown", onPointerDown);
+    dragHost.removeEventListener("pointermove", onPointerMove);
+    dragHost.removeEventListener("pointerup", onPointerUp);
+    dragHost.removeEventListener("pointercancel", onPointerUp);
+    dragHost = null;
   }
 
   function attach({ chart: c, series: s, container: el, getContext: gc }) {
@@ -372,16 +462,30 @@
     series = s;
     container = el;
     getContext = gc;
+    overlayRoot =
+      el.parentElement?.querySelector("#trade-pos-overlays") ||
+      el.parentElement?.querySelector(".trade-pos-overlays");
+    if (!overlayRoot && el.parentElement) {
+      overlayRoot = document.createElement("div");
+      overlayRoot.id = "trade-pos-overlays";
+      overlayRoot.className = "trade-pos-overlays";
+      overlayRoot.setAttribute("aria-hidden", "true");
+      el.parentElement.appendChild(overlayRoot);
+    }
+    rangeSubscribed = false;
     bindDrag();
     sync();
   }
 
   function detach() {
     clear();
+    unbindDrag();
     chart = null;
     series = null;
     container = null;
+    overlayRoot = null;
     getContext = null;
+    rangeSubscribed = false;
   }
 
   window.AlphaFXChartPositions = {
@@ -390,5 +494,6 @@
     sync,
     clear,
     updateLivePnl,
+    layoutAll,
   };
 })();

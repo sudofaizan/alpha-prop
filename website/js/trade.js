@@ -236,6 +236,7 @@
       fmtPrice,
       barBuffer,
       fallbackTime: () => barBuffer[barBuffer.length - 1]?.time,
+      closePosition: (id) => closePosition(id),
     };
   }
 
