@@ -2,6 +2,24 @@
 const BRAND = "ALPHAFX";
 const PROMO_CODE = "ALPHA38";
 
+const TRADER_PAGES = new Set([
+  "dashboard",
+  "challenges",
+  "accounts",
+  "trade",
+  "billing",
+  "payouts",
+  "leaderboard",
+  "rules",
+  "verification",
+  "certificates",
+  "referrals",
+  "support",
+  "notifications",
+  "profile",
+  "account-stats",
+]);
+
 const NAV = [
   { id: "dashboard", label: "Dashboard", href: "dashboard.html", group: "Workspace", icon: "dashboard" },
   { id: "challenges", label: "Challenges", href: "index.html", group: "Workspace", icon: "challenges" },
@@ -17,7 +35,13 @@ const NAV = [
   { id: "support", label: "Support", href: "support.html", group: "Workspace", icon: "support" },
   { id: "notifications", label: "Notifications", href: "notifications.html", group: "Workspace", icon: "notifications" },
   { id: "profile", label: "Profile", href: "profile.html", group: "Workspace", icon: "profile" },
-  { id: "admin", label: "Admin", href: "admin.html", group: "Workspace", icon: "rules", adminOnly: true },
+];
+
+const ADMIN_NAV = [
+  { id: "admin-live", label: "Live trading", href: "admin.html#live", group: "Administration", icon: "trade", tab: "live" },
+  { id: "admin-users", label: "Users", href: "admin.html#users", group: "Administration", icon: "accounts", tab: "users" },
+  { id: "admin-accounts", label: "Accounts", href: "admin.html#accounts", group: "Administration", icon: "billing", tab: "accounts" },
+  { id: "admin-orders", label: "Orders", href: "admin.html#orders", group: "Administration", icon: "billing", tab: "orders" },
 ];
 
 const ICONS = {
@@ -52,57 +76,129 @@ function brandLogo() {
   return `<svg width="30" height="30" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${BRAND}" style="display:block;flex-shrink:0"><defs><linearGradient id="g1-af" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFE45C"></stop><stop offset="0.55" stop-color="#FFD700"></stop><stop offset="1" stop-color="#C99A2E"></stop></linearGradient><linearGradient id="g2-af" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.78"></stop><stop offset="0.12" stop-color="#FFFFFF" stop-opacity="0.34"></stop><stop offset="0.40" stop-color="#FFFFFF" stop-opacity="0"></stop></linearGradient><radialGradient id="g3-af" cx="0.3" cy="0.22" r="0.5"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.85"></stop><stop offset="0.35" stop-color="#FFFFFF" stop-opacity="0.18"></stop><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"></stop></radialGradient><radialGradient id="g4-af" cx="0.62" cy="1.05" r="0.7"><stop offset="0" stop-color="#FFD877" stop-opacity="0.55"></stop><stop offset="1" stop-color="#FFD877" stop-opacity="0"></stop></radialGradient></defs><rect x="0" y="0" width="512" height="512" rx="118" fill="url(#g1-af)"></rect><rect x="0" y="0" width="512" height="512" rx="118" fill="url(#g4-af)"></rect><rect x="0" y="0" width="512" height="512" rx="118" fill="url(#g3-af)"></rect><rect x="0" y="0" width="512" height="512" rx="118" fill="url(#g2-af)"></rect><rect x="5" y="5" width="502" height="502" rx="114" fill="none" stroke="#FFF6D6" stroke-opacity="0.55" stroke-width="3"></rect><g fill="none" stroke="#0D0D0F" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"><path d="M 324.8 171.7 A 120 120 0 1 0 324.8 368.3"></path><path d="M 324.8 171.7 L 404 92"></path><path d="M 360 92 L 404 92 L 404 136"></path></g></svg>`;
 }
 
-function navItem(item, active) {
-  const cls = item.id === active ? "pt-nav-item is-active" : "pt-nav-item";
+function adminTabFromHash() {
+  const hash = (window.location.hash || "").replace("#", "").toLowerCase();
+  return ["live", "users", "accounts", "orders"].includes(hash) ? hash : "live";
+}
+
+function isNavItemActive(item, active, isAdmin) {
+  if (isAdmin) {
+    if (active !== "admin") return false;
+    return item.tab === adminTabFromHash();
+  }
+  return item.id === active;
+}
+
+function navItem(item, active, isAdmin) {
+  const cls = isNavItemActive(item, active, isAdmin) ? "pt-nav-item is-active" : "pt-nav-item";
   const badgeVal = item.id === "notifications" ? (window.__ALPHAFX_UNREAD ?? item.badge) : item.badge;
   const badge = badgeVal ? `<span class="pt-nav-item-badge" data-nav-badge="${item.id}">${badgeVal}</span>` : "";
   return `<a class="${cls}" href="${item.href}"><span class="pt-nav-item-icon">${svg(item.icon)}</span><span class="pt-nav-item-label">${item.label}</span>${badge}</a>`;
 }
 
-function renderSidebar(active) {
-  const isAdmin = window.__ALPHAFX_USER?.is_admin;
-  const navItems = NAV.filter((item) => !item.adminOnly || isAdmin);
-  const nav = navItems.map((item) => navItem(item, active)).join("");
-  return `<aside class="pt-sidebar" id="pt-sidebar">
-    <a class="pt-sidebar-brand" href="dashboard.html">${brandLogo()}<div><div class="pt-sidebar-brand-title">${BRAND}</div><div class="pt-sidebar-brand-sub">Trader Portal</div></div></a>
-    <button type="button" title="Collapse" class="pt-sidebar-toggle" id="pt-sidebar-toggle"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(180deg);transition:transform 240ms var(--ease-out-quart)"><path d="M9 18l6-6-6-6"></path></svg></button>
-    <nav class="pt-sidebar-nav"><div class="pt-sidebar-group-label">Workspace</div>${nav}</nav>
-    <div class="pt-promo">
+function renderPromo() {
+  return `<div class="pt-promo">
       <div class="pt-promo-label">${svg("gift", 11)}Live promo · 38% off</div>
       <p class="pt-promo-body">38% off all accounts</p>
       <button type="button" title="Click to copy" class="pt-promo-code" id="copy-promo"><span>${PROMO_CODE}</span>${svg("copy", 13)}</button>
       <a class="pt-promo-cta" href="index.html">Buy now<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"></path></svg></a>
-    </div>
+    </div>`;
+}
+
+function renderSidebar(active, isAdmin) {
+  const navItems = isAdmin ? ADMIN_NAV : NAV;
+  const groupLabel = isAdmin ? "Administration" : "Workspace";
+  const brandHref = isAdmin ? "admin.html" : "dashboard.html";
+  const brandSub = isAdmin ? "Admin Console" : "Trader Portal";
+  const nav = navItems.map((item) => navItem(item, active, isAdmin)).join("");
+  const promo = !isAdmin && active === "challenges" ? renderPromo() : "";
+  return `<aside class="pt-sidebar${isAdmin ? " pt-sidebar--admin" : ""}" id="pt-sidebar">
+    <a class="pt-sidebar-brand" href="${brandHref}">${brandLogo()}<div><div class="pt-sidebar-brand-title">${BRAND}</div><div class="pt-sidebar-brand-sub">${brandSub}</div></div></a>
+    <button type="button" title="Collapse" class="pt-sidebar-toggle" id="pt-sidebar-toggle"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(180deg);transition:transform 240ms var(--ease-out-quart)"><path d="M9 18l6-6-6-6"></path></svg></button>
+    <nav class="pt-sidebar-nav"><div class="pt-sidebar-group-label">${groupLabel}</div>${nav}</nav>
+    ${promo}
     <div class="pt-sidebar-foot"><button type="button" id="sign-out-btn" title="Sign out" class="pt-sidebar-logout"><span class="pt-nav-item-icon">${svg("logout")}</span><span>Sign out</span></button></div>
   </aside>`;
 }
 
-function renderMobileBar(active) {
-  const items = [
-    { id: "dashboard", label: "Home", href: "dashboard.html", icon: "dashboard" },
-    { id: "accounts", label: "My Accounts", href: "accounts.html", icon: "accounts" },
-    { id: "trade", label: "Trade", href: "trade.html", icon: "trade" },
-    { id: "payouts", label: "Payouts", href: "payouts.html", icon: "payouts" },
-  ];
-  const links = items.map((item) => {
-    const cls = item.id === active ? "pt-mobile-bar-item is-active" : "pt-mobile-bar-item";
-    return `<a class="${cls}" href="${item.href}">${svg(item.icon)}<span>${item.label}</span></a>`;
-  }).join("");
+function renderMobileBar(active, isAdmin) {
+  const items = isAdmin
+    ? [
+        { id: "admin-live", label: "Live", href: "admin.html#live", icon: "trade", tab: "live" },
+        { id: "admin-users", label: "Users", href: "admin.html#users", icon: "accounts", tab: "users" },
+        { id: "admin-accounts", label: "Accounts", href: "admin.html#accounts", icon: "billing", tab: "accounts" },
+        { id: "admin-orders", label: "Orders", href: "admin.html#orders", icon: "billing", tab: "orders" },
+      ]
+    : [
+        { id: "dashboard", label: "Home", href: "dashboard.html", icon: "dashboard" },
+        { id: "accounts", label: "My Accounts", href: "accounts.html", icon: "accounts" },
+        { id: "trade", label: "Trade", href: "trade.html", icon: "trade" },
+        { id: "payouts", label: "Payouts", href: "payouts.html", icon: "payouts" },
+      ];
+  const links = items
+    .map((item) => {
+      const on = isAdmin ? isNavItemActive(item, active, true) : item.id === active;
+      const cls = on ? "pt-mobile-bar-item is-active" : "pt-mobile-bar-item";
+      return `<a class="${cls}" href="${item.href}">${svg(item.icon)}<span>${item.label}</span></a>`;
+    })
+    .join("");
   return `<nav class="pt-mobile-bar">${links}<button type="button" class="pt-mobile-bar-item" id="pt-mobile-menu" aria-label="Menu" aria-expanded="false">${svg("menu")}<span>Menu</span></button></nav>`;
 }
 
-function renderTopbar(title) {
+function renderTopbar(title, isAdmin) {
   const date = new Date().toLocaleDateString("en-US", {
-    weekday: "short", year: "numeric", month: "short", day: "2-digit",
+    weekday: "short",
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
   });
+  const sub = isAdmin ? "Administration" : "Trader Portal";
+  const bell = isAdmin
+    ? ""
+    : `<a href="notifications.html" title="Notifications" class="pt-topbar-bell">${svg("bell")}<span class="pt-topbar-bell-dot"></span></a><span class="pt-topbar-divider" aria-hidden="true"></span>`;
+  const profileHref = isAdmin ? "admin.html#users" : "profile.html";
   return `<header class="pt-topbar">
     <div class="pt-topbar-title-block"><div class="pt-topbar-title">${title}</div><div class="pt-topbar-date">${date}</div></div>
     <div class="pt-topbar-right">
-      <a href="notifications.html" title="Notifications" class="pt-topbar-bell">${svg("bell")}<span class="pt-topbar-bell-dot"></span></a>
-      <span class="pt-topbar-divider" aria-hidden="true"></span>
-      <a title="View profile" class="pt-topbar-profile" href="profile.html"><span class="pt-topbar-avatar" id="pt-topbar-avatar">··</span><span><div class="pt-topbar-profile-name" id="pt-topbar-profile-name">Loading…</div><div class="pt-topbar-profile-sub">Trader Portal</div></span></a>
+      ${bell}
+      <a title="View profile" class="pt-topbar-profile" href="${profileHref}"><span class="pt-topbar-avatar" id="pt-topbar-avatar">··</span><span><div class="pt-topbar-profile-name" id="pt-topbar-profile-name">Loading…</div><div class="pt-topbar-profile-sub">${sub}</div></span></a>
     </div>
   </header>`;
+}
+
+function bindShellEvents() {
+  document.getElementById("copy-promo")?.addEventListener("click", () => {
+    navigator.clipboard?.writeText(PROMO_CODE);
+  });
+  document.getElementById("pt-sidebar-toggle")?.addEventListener("click", () => {
+    document.getElementById("pt-sidebar")?.classList.toggle("is-collapsed");
+  });
+  document.getElementById("pt-mobile-menu")?.addEventListener("click", () => {
+    document.getElementById("pt-sidebar")?.classList.toggle("is-open");
+  });
+}
+
+function refreshShellForUser(user) {
+  const active = document.body.dataset.page;
+  const isAdmin = Boolean(user?.is_admin);
+  const sidebar = document.getElementById("pt-sidebar");
+  const mobileBar = document.querySelector(".pt-mobile-bar");
+  if (!sidebar) return;
+
+  const collapsed = sidebar.classList.contains("is-collapsed");
+  const open = sidebar.classList.contains("is-open");
+  sidebar.outerHTML = renderSidebar(active, isAdmin);
+  const nextSidebar = document.getElementById("pt-sidebar");
+  if (collapsed) nextSidebar?.classList.add("is-collapsed");
+  if (open) nextSidebar?.classList.add("is-open");
+
+  if (mobileBar) mobileBar.outerHTML = renderMobileBar(active, isAdmin);
+
+  const sub = document.querySelector(".pt-topbar-profile-sub");
+  if (sub) sub.textContent = isAdmin ? "Administration" : "Trader Portal";
+
+  bindShellEvents();
+  document.body.classList.toggle("is-admin-user", isAdmin);
 }
 
 function initLayout() {
@@ -112,27 +208,18 @@ function initLayout() {
   const slot = document.getElementById("app-root");
   if (!slot) return;
 
+  const isAdmin = Boolean(window.__ALPHAFX_USER?.is_admin);
   const content = slot.innerHTML;
   const pageInner = noWrap ? content : `<div class="pt-page dfx-scope" data-screen-label="${title}">${content}</div>`;
 
   const portal = document.createElement("div");
   portal.setAttribute("data-portal", "true");
   portal.style.cssText = "display:flex;min-height:100vh";
-  portal.innerHTML = `${renderSidebar(active)}${renderMobileBar(active)}<div style="flex:1 1 0%;display:flex;flex-direction:column;min-height:100vh;min-width:0">${renderTopbar(title)}<main class="dashboard-main" style="flex:1 1 0%;overflow-y:auto">${pageInner}</main></div>`;
+  portal.innerHTML = `${renderSidebar(active, isAdmin)}${renderMobileBar(active, isAdmin)}<div style="flex:1 1 0%;display:flex;flex-direction:column;min-height:100vh;min-width:0">${renderTopbar(title, isAdmin)}<main class="dashboard-main" style="flex:1 1 0%;overflow-y:auto">${pageInner}</main></div>`;
 
   slot.replaceWith(portal);
-
-  document.getElementById("copy-promo")?.addEventListener("click", () => {
-    navigator.clipboard?.writeText(PROMO_CODE);
-  });
-
-  document.getElementById("pt-sidebar-toggle")?.addEventListener("click", () => {
-    document.getElementById("pt-sidebar")?.classList.toggle("is-collapsed");
-  });
-
-  document.getElementById("pt-mobile-menu")?.addEventListener("click", () => {
-    document.getElementById("pt-sidebar")?.classList.toggle("is-open");
-  });
+  document.body.classList.toggle("is-admin-user", isAdmin);
+  bindShellEvents();
 
   window.dispatchEvent(new CustomEvent("alphafx:layout-ready"));
   if (window.__ALPHAFX_USER) {
@@ -150,27 +237,34 @@ window.addEventListener("alphafx:user", (e) => {
     const parts = user.full_name.trim().split(/\s+/);
     avatarEl.textContent = parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : user.full_name.slice(0, 2).toUpperCase();
   }
-  const active = document.body.dataset.page;
-  const sidebar = document.getElementById("pt-sidebar");
-  if (sidebar && user?.is_admin && !sidebar.querySelector('[href="admin.html"]')) {
-    const nav = sidebar.querySelector(".pt-sidebar-nav");
-    nav?.insertAdjacentHTML("beforeend", navItem({ id: "admin", label: "Admin", href: "admin.html", icon: "rules" }, active));
-  }
-  if (window.AlphaFXApi?.getUnreadCount) {
-    window.AlphaFXApi.getUnreadCount().then(({ count }) => {
-      window.__ALPHAFX_UNREAD = count || null;
-      document.querySelectorAll('[data-nav-badge="notifications"]').forEach((el) => {
-        if (count > 0) {
-          el.textContent = count;
-          el.style.display = "";
-        } else {
-          el.remove();
-        }
-      });
-      const bell = document.querySelector(".pt-topbar-bell");
-      if (bell) bell.classList.toggle("has-unread", count > 0);
-    }).catch(() => {});
+
+  refreshShellForUser(user);
+
+  if (user?.is_admin || window.AlphaFXApi?.getUnreadCount) {
+    if (user?.is_admin) return;
+    window.AlphaFXApi.getUnreadCount()
+      .then(({ count }) => {
+        window.__ALPHAFX_UNREAD = count || null;
+        document.querySelectorAll('[data-nav-badge="notifications"]').forEach((el) => {
+          if (count > 0) {
+            el.textContent = count;
+            el.style.display = "";
+          } else {
+            el.remove();
+          }
+        });
+        const bell = document.querySelector(".pt-topbar-bell");
+        if (bell) bell.classList.toggle("has-unread", count > 0);
+      })
+      .catch(() => {});
   }
 });
 
+window.addEventListener("hashchange", () => {
+  if (document.body.dataset.page !== "admin" || !window.__ALPHAFX_USER?.is_admin) return;
+  refreshShellForUser(window.__ALPHAFX_USER);
+});
+
 document.addEventListener("DOMContentLoaded", initLayout);
+
+window.AlphaFXLayout = { refreshShellForUser, TRADER_PAGES };

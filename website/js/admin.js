@@ -6,6 +6,25 @@
   let userDetailId = null;
   let userDetailAccountId = null;
 
+  function tabFromHash() {
+    const hash = (window.location.hash || "").replace("#", "").toLowerCase();
+    return ["live", "users", "accounts", "orders"].includes(hash) ? hash : "live";
+  }
+
+  function setActiveTab(tab, { skipHash = false } = {}) {
+    activeTab = tab;
+    userDetailId = null;
+    userDetailAccountId = null;
+    if (!skipHash) {
+      const next = `#${tab}`;
+      if (window.location.hash !== next) history.replaceState(null, "", next);
+    }
+    document.querySelectorAll(".admin-tab").forEach((t) => {
+      t.classList.toggle("is-active", t.dataset.tab === tab);
+    });
+    window.AlphaFXLayout?.refreshShellForUser?.(window.__ALPHAFX_USER);
+  }
+
   const closeIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>`;
 
   function money(n) {
@@ -222,13 +241,16 @@
 
   async function renderTab() {
     stopLiveTimer();
-    userDetailId = null;
+    if (!userDetailId) setActiveTab(activeTab, { skipHash: true });
     setPanel(`<div style="padding:20px;color:var(--text-dim);">Loading…</div>`);
     if (activeTab === "live") {
       await renderLive();
       startLiveTimer();
     }
-    if (activeTab === "users") await renderUsers();
+    if (activeTab === "users") {
+      if (userDetailId) await renderUserDetail(userDetailId);
+      else await renderUsers();
+    }
     if (activeTab === "accounts") await renderAccounts();
     if (activeTab === "orders") await renderOrders();
   }
@@ -251,10 +273,7 @@
   document.getElementById("admin-tabs")?.addEventListener("click", (e) => {
     const btn = e.target.closest(".admin-tab");
     if (!btn) return;
-    activeTab = btn.dataset.tab;
-    userDetailId = null;
-    userDetailAccountId = null;
-    document.querySelectorAll(".admin-tab").forEach((t) => t.classList.toggle("is-active", t === btn));
+    setActiveTab(btn.dataset.tab || "live");
     renderTab().catch(console.error);
   });
 
@@ -266,9 +285,7 @@
     }
     const statsBtn = e.target.closest("[data-user-stats]");
     if (statsBtn) {
-      activeTab = "users";
-      userDetailAccountId = null;
-      document.querySelectorAll(".admin-tab").forEach((t) => t.classList.toggle("is-active", t.dataset.tab === "users"));
+      setActiveTab("users");
       await renderUserDetail(Number(statsBtn.dataset.userStats));
       return;
     }
@@ -303,6 +320,8 @@
   });
 
   document.addEventListener("DOMContentLoaded", () => {
+    activeTab = tabFromHash();
+    setActiveTab(activeTab, { skipHash: true });
     setTimeout(async () => {
       try {
         await loadStats();
@@ -311,6 +330,16 @@
         setPanel(`<div class="pt-card" style="padding:20px;color:var(--danger);">${err.message}</div>`);
       }
     }, 200);
+  });
+
+  window.addEventListener("hashchange", () => {
+    const tab = tabFromHash();
+    if (tab === activeTab && !userDetailId) return;
+    activeTab = tab;
+    userDetailId = null;
+    userDetailAccountId = null;
+    setActiveTab(tab, { skipHash: true });
+    renderTab().catch(console.error);
   });
 
   window.addEventListener("beforeunload", stopLiveTimer);

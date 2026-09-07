@@ -49,8 +49,15 @@
     }
     try {
       const user = await window.AlphaFXApi.me();
+      window.__ALPHAFX_USER = user;
       window.dispatchEvent(new CustomEvent("alphafx:user", { detail: user }));
-      if (currentPage() === "admin" && !user.is_admin) {
+
+      if (user.is_admin) {
+        if (currentPage() !== "admin" && window.AlphaFXLayout?.TRADER_PAGES?.has(currentPage())) {
+          window.location.href = "admin.html";
+          return null;
+        }
+      } else if (currentPage() === "admin") {
         window.location.href = "dashboard.html";
         return null;
       }
@@ -73,9 +80,14 @@
       errorEl.hidden = true;
       submitBtn.disabled = true;
       try {
-        await login(form.email.value.trim(), form.password.value);
+        const user = await login(form.email.value.trim(), form.password.value);
         const params = new URLSearchParams(window.location.search);
-        window.location.href = params.get("next") || "dashboard.html";
+        const next = params.get("next");
+        if (user.is_admin) {
+          window.location.href = next && next.includes("admin") ? next : "admin.html";
+        } else {
+          window.location.href = next || "dashboard.html";
+        }
       } catch (err) {
         errorEl.textContent = err.message || "Login failed";
         errorEl.hidden = false;
@@ -86,9 +98,14 @@
 
     if (window.AlphaFXApi.getToken()) {
       window.AlphaFXApi.me()
-        .then(() => {
+        .then((user) => {
           const params = new URLSearchParams(window.location.search);
-          window.location.href = params.get("next") || "dashboard.html";
+          const next = params.get("next");
+          if (user.is_admin) {
+            window.location.href = next && next.includes("admin") ? next : "admin.html";
+          } else {
+            window.location.href = next || "dashboard.html";
+          }
         })
         .catch(() => window.AlphaFXApi.clearToken());
     }
@@ -117,7 +134,9 @@
   }
 
   function bindSignOut() {
-    document.getElementById("sign-out-btn")?.addEventListener("click", async (e) => {
+    document.addEventListener("click", async (e) => {
+      const btn = e.target.closest("#sign-out-btn");
+      if (!btn) return;
       e.preventDefault();
       await logout();
       window.location.href = "login.html";
