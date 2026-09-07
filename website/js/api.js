@@ -4,6 +4,23 @@
 (function () {
   const API = window.ALPHAFX_API || "http://localhost:8000";
   const TOKEN_KEY = "alphafx_token";
+  const DEVICE_KEY = "alphafx_device_id";
+
+  function getDeviceId() {
+    try {
+      let id = localStorage.getItem(DEVICE_KEY);
+      if (!id) {
+        id =
+          typeof crypto !== "undefined" && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `dev-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+        localStorage.setItem(DEVICE_KEY, id);
+      }
+      return id;
+    } catch {
+      return `dev-${Date.now()}`;
+    }
+  }
 
   function getToken() {
     return localStorage.getItem(TOKEN_KEY);
@@ -24,6 +41,7 @@
     };
     const token = getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
+    headers["X-Device-Id"] = getDeviceId();
 
     const res = await fetch(`${API}${path}`, { ...options, headers });
     let data = null;
@@ -50,10 +68,18 @@
     getToken,
     setToken,
     clearToken,
+    getDeviceId,
     request,
-    login: (email, password) => request("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+    login: (email, password) =>
+      request("/api/v1/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password, device_id: getDeviceId() }),
+      }),
     register: (email, password, full_name) =>
-      request("/api/v1/auth/register", { method: "POST", body: JSON.stringify({ email, password, full_name }) }),
+      request("/api/v1/auth/register", {
+        method: "POST",
+        body: JSON.stringify({ email, password, full_name, device_id: getDeviceId() }),
+      }),
     logout: () => request("/api/v1/auth/logout", { method: "POST" }),
     me: () => request("/api/v1/auth/me"),
     getPlans: () => request("/api/v1/plans"),
@@ -62,7 +88,10 @@
     getAccount: (id) => request(`/api/v1/accounts/${id}`),
     checkoutPay: (body) => request("/api/v1/checkout/pay", { method: "POST", body: JSON.stringify(body) }),
     adminStats: () => request("/api/v1/admin/stats"),
-    adminUsers: () => request("/api/v1/admin/users"),
+    adminUsers: (params = {}) => {
+      const q = params.device_id ? `?device_id=${encodeURIComponent(params.device_id)}` : "";
+      return request(`/api/v1/admin/users${q}`);
+    },
     adminUser: (id) => request(`/api/v1/admin/users/${id}`),
     adminUserSnapshot: (userId, accountId) =>
       request(`/api/v1/admin/users/${userId}/snapshot?account_id=${encodeURIComponent(accountId)}`),

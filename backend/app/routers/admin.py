@@ -13,6 +13,7 @@ from app.services.accounts import account_to_summary
 from app.services.notifications import create_notification
 from app.services.strikes import RULE_PRESETS, add_strike, clear_strikes, list_strikes, strike_count
 from app.models.user_strike import STRIKE_LIMIT
+from app.utils.time_format import utc_iso
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -51,6 +52,28 @@ def _user_trading_counts(db: Session, user_id: int) -> dict:
     }
 
 
+def _session_row(db: Session, user_id: int) -> dict:
+    session = db.query(UserSession).filter(UserSession.user_id == user_id).one_or_none()
+    if not session:
+        return {
+            "device_id": None,
+            "ip_address": None,
+            "user_agent": None,
+            "last_seen_at": None,
+            "session_started_at": None,
+        }
+    ua = session.user_agent or ""
+    if len(ua) > 80:
+        ua = ua[:77] + "..."
+    return {
+        "device_id": session.device_id,
+        "ip_address": session.ip_address,
+        "user_agent": ua or None,
+        "last_seen_at": utc_iso(session.last_seen_at) if session.last_seen_at else None,
+        "session_started_at": utc_iso(session.created_at) if session.created_at else None,
+    }
+
+
 def _admin_user_row(db: Session, user: User) -> dict:
     account_count = db.query(ChallengeAccount).filter(ChallengeAccount.user_id == user.id).count()
     order_count = db.query(Order).filter(Order.user_id == user.id).count()
@@ -73,6 +96,7 @@ def _admin_user_row(db: Session, user: User) -> dict:
         "pending_orders": trading["pending_orders"],
         "is_online": _is_online(db, user.id),
         "created_at": user.created_at.isoformat() if user.created_at else "",
+        **_session_row(db, user.id),
     }
 
 
@@ -113,8 +137,16 @@ def _pending_admin_row(trade: SimTrade) -> dict:
 
 
 @router.get("/users")
-def list_users(_admin: User = Depends(get_admin_user), db: Session = Depends(get_db)):
-    users = db.query(User).order_by(User.created_at.desc()).all()
+def list_users(
+    device_id: str | None = Query(default=None, min_length=3, max_length=64),
+    _admin: User = Depends(get_admin_user),
+    db: Session = Depends(get_db),
+):
+    q = db.query(User)
+    if device_id:
+        needle = device_id.strip()
+        q = q.join(UserSession, UserSession.user_id == User.id).filter(UserSession.device_id.ilike(f"%{needle}%"))
+    users = q.order_by(User.created_at.desc()).all()
     return {"items": [_admin_user_row(db, u) for u in users]}
 
 

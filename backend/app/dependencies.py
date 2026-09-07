@@ -8,6 +8,7 @@ from app.services.auth import AuthError, get_user_for_token
 
 def get_current_user(
     authorization: str | None = Header(default=None),
+    x_device_id: str | None = Header(default=None, alias="X-Device-Id"),
     db: Session = Depends(get_db),
 ) -> User:
     if not authorization or not authorization.lower().startswith("bearer "):
@@ -24,7 +25,7 @@ def get_current_user(
         )
 
     try:
-        return get_user_for_token(db, token)
+        return get_user_for_token(db, token, device_id=x_device_id)
     except AuthError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

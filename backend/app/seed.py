@@ -18,9 +18,21 @@ def _migrate_sim_trades() -> None:
         if "admin_close_message" not in cols:
             conn.execute(text("ALTER TABLE sim_trades ADD COLUMN admin_close_message TEXT"))
 
+
+def _migrate_user_sessions() -> None:
+    insp = inspect(engine)
+    if "user_sessions" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("user_sessions")}
+    with engine.begin() as conn:
+        if "device_id" not in cols:
+            conn.execute(text("ALTER TABLE user_sessions ADD COLUMN device_id VARCHAR(64)"))
+
+
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _migrate_sim_trades()
+    _migrate_user_sessions()
     seed_admin()
 
 

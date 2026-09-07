@@ -32,22 +32,27 @@ def login_user(
     *,
     user_agent: str | None = None,
     ip_address: str | None = None,
+    device_id: str | None = None,
 ) -> tuple[str, UserSession]:
     """Create or replace the user's only active session."""
     token = create_session_token()
     token_hash = hash_token(token)
+    device_id = (device_id or "").strip()[:64] or None
 
     session = db.query(UserSession).filter(UserSession.user_id == user.id).one_or_none()
     if session:
         session.token_hash = token_hash
         session.user_agent = user_agent
         session.ip_address = ip_address
+        if device_id:
+            session.device_id = device_id
     else:
         session = UserSession(
             user_id=user.id,
             token_hash=token_hash,
             user_agent=user_agent,
             ip_address=ip_address,
+            device_id=device_id,
         )
         db.add(session)
 
@@ -61,7 +66,7 @@ def logout_user(db: Session, user: User) -> None:
     db.commit()
 
 
-def get_user_for_token(db: Session, token: str) -> User:
+def get_user_for_token(db: Session, token: str, *, device_id: str | None = None) -> User:
     token_hash = hash_token(token)
     session = db.query(UserSession).filter(UserSession.token_hash == token_hash).one_or_none()
     if not session:
@@ -76,6 +81,9 @@ def get_user_for_token(db: Session, token: str) -> User:
     if user.is_blocked:
         raise AuthError("USER_BLOCKED", user.blocked_reason or "Your account has been blocked.")
 
+    device_id = (device_id or "").strip()[:64] or None
+    if device_id and session.device_id != device_id:
+        session.device_id = device_id
     session.last_seen_at = datetime.now(timezone.utc)
     db.commit()
     return user

@@ -20,6 +20,7 @@ class UserSession(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    device_id = mapped_column(String(64), nullable=True, index=True)
     user_agent = mapped_column(String(512), nullable=True)
     ip_address = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

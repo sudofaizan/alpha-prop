@@ -10,6 +10,7 @@
   let supportSelectedId = null;
   let supportThread = null;
   let supportSending = false;
+  let adminDeviceFilter = "";
 
   const SUPPORT_POLL_MS = 3000;
 
@@ -329,7 +330,8 @@
   }
 
   async function renderUsers() {
-    const data = await window.AlphaFXApi.adminUsers();
+    const q = adminDeviceFilter.trim();
+    const data = await window.AlphaFXApi.adminUsers(q ? { device_id: q } : {});
     const rows = data.items.map((u) => {
       const btn = u.is_blocked
         ? `<button class="admin-btn admin-btn--ok" data-unblock="${u.id}">Unblock</button>`
@@ -343,8 +345,12 @@
         (u.strike_count ?? 0) > 0
           ? `<span style="color:${u.is_breached ? "#fca5a5" : "#fbbf24"};">${u.strike_count}/${u.strike_limit ?? 2}${u.is_breached ? " · Breached" : ""}</span>`
           : "0";
+      const deviceCell = u.device_id
+        ? `<code style="font-size:11px;color:var(--gold);">${escapeHtml(u.device_id)}</code>`
+        : `<span class="admin-muted">—</span>`;
       return `<tr>
         <td>${u.full_name}<br><span class="admin-muted">${u.email}</span></td>
+        <td>${deviceCell}<br><span class="admin-muted">${escapeHtml(u.ip_address || "")}</span></td>
         <td>${u.is_admin ? "Admin" : "Trader"}</td>
         <td>${strikeLabel}</td>
         <td>${u.account_count}</td>
@@ -359,7 +365,16 @@
         </div></td>
       </tr>`;
     });
-    setPanel(table(["User", "Role", "Strikes", "Accounts", "Funded", "Open/Pending", "Session", "Status", "Actions"], rows));
+    setPanel(`
+      <div class="admin-field" style="margin-bottom:14px;">
+        <label for="admin-device-search">Find by device ID</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <input id="admin-device-search" class="admin-select" style="max-width:420px;flex:1;" placeholder="Paste device ID (min 3 chars)…" value="${escapeHtml(q)}">
+          <button type="button" class="admin-btn admin-btn--gold" id="admin-device-search-btn">Search</button>
+          ${q ? `<button type="button" class="admin-btn" id="admin-device-clear-btn">Clear</button>` : ""}
+        </div>
+      </div>
+      ${table(["User", "Device / IP", "Role", "Strikes", "Accounts", "Funded", "Open/Pend", "Session", "Status", "Actions"], rows)}`);
   }
 
   async function renderUserDetail(userId) {
@@ -440,6 +455,7 @@
         <div>
           <h2 class="admin-section-title">${u.full_name}</h2>
           <p class="admin-muted">${u.email} · ${u.is_blocked ? "Blocked" : "Active"} · ${u.is_online ? "Online" : "Offline"} · Strikes ${u.strike_count ?? 0}/${u.strike_limit ?? 2}${u.is_breached ? " · Breached" : ""}</p>
+          ${u.device_id ? `<p class="admin-muted" style="margin-top:6px;">Device <code style="color:var(--gold);">${escapeHtml(u.device_id)}</code>${u.ip_address ? ` · IP ${escapeHtml(u.ip_address)}` : ""}${u.user_agent ? `<br><span style="font-size:11px;">${escapeHtml(u.user_agent)}</span>` : ""}</p>` : ""}
         </div>
         <div class="admin-actions">${strikeBtn}${clearStrikeBtn}${u.is_admin ? "" : btn}</div>
       </div>
@@ -638,6 +654,20 @@
     const panel = e.target.closest("#admin-panel");
     if (!panel) return;
 
+    if (e.target.closest("#admin-device-search-btn")) {
+      e.preventDefault();
+      adminDeviceFilter = document.getElementById("admin-device-search")?.value || "";
+      await renderUsers();
+      return;
+    }
+
+    if (e.target.closest("#admin-device-clear-btn")) {
+      e.preventDefault();
+      adminDeviceFilter = "";
+      await renderUsers();
+      return;
+    }
+
     const closeBtn = e.target.closest("[data-admin-close]");
     if (closeBtn) {
       e.preventDefault();
@@ -705,6 +735,12 @@
   }
 
   async function handleAdminChange(e) {
+    if (e.target.id === "admin-device-search" && e.type === "keydown" && e.key === "Enter") {
+      e.preventDefault();
+      adminDeviceFilter = e.target.value || "";
+      await renderUsers();
+      return;
+    }
     if (e.target.id === "admin-account-select" && userDetailId) {
       userDetailAccountId = Number(e.target.value) || null;
       await renderUserDetail(userDetailId);
@@ -720,6 +756,7 @@
     document.addEventListener("click", handleAdminClick);
     document.addEventListener("submit", handleAdminSubmit);
     document.addEventListener("change", handleAdminChange);
+    document.addEventListener("keydown", handleAdminChange);
   }
 
   async function bootAdmin() {

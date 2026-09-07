@@ -22,6 +22,7 @@ def register(payload: RegisterRequest, request: Request, db: Session = Depends(g
         user,
         user_agent=request.headers.get("user-agent"),
         ip_address=request.client.host if request.client else None,
+        device_id=payload.device_id,
     )
     return LoginResponse(access_token=token, user=user_out(user, db))
 
@@ -41,6 +42,7 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
         user,
         user_agent=request.headers.get("user-agent"),
         ip_address=request.client.host if request.client else None,
+        device_id=payload.device_id,
     )
     return LoginResponse(access_token=token, user=user_out(user, db))
 
