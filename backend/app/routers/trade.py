@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User
-from app.schemas.trade import ClosePositionRequest, OrderResponse, PlaceOrderRequest, UpdateStopsRequest
+from app.schemas.trade import CancelPendingRequest, ClosePositionRequest, OrderResponse, PlaceOrderRequest, UpdateStopsRequest
 from app.services.accounts import account_to_summary, dashboard_for_user, get_account, list_user_accounts
 from app.services import sim_engine
 
@@ -75,6 +75,7 @@ def trade_snapshot(
         "counts": panels["counts"],
         "metrics": panels.get("metrics"),
         "stop_hits": panels.get("stop_hits") or [],
+        "pending_fills": panels.get("pending_fills") or [],
     }
 
 
@@ -84,17 +85,25 @@ def place_order(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Open a simulated market order against live prices."""
-    trade = sim_engine.open_market_order(
+    """Open a simulated market, limit, or stop order against live prices."""
+    trade = sim_engine.place_order(
         db,
         user.id,
         body.account_id,
         body.symbol,
         body.side,
         body.volume,
+        body.order_type,
+        body.price,
         body.stop_loss,
         body.take_profit,
     )
+    if trade.status == "pending":
+        ot = (trade.order_type or "limit").upper()
+        return OrderResponse(
+            trade_id=trade.id,
+            message=f"Pending {ot} {trade.side} {trade.volume} {trade.symbol} @ {trade.entry_price}",
+        )
     return OrderResponse(trade_id=trade.id, message=f"Simulated {trade.side} {trade.volume} {trade.symbol} @ {trade.entry_price}")
 
 
@@ -130,6 +139,18 @@ def update_position_stops(
         set_take_profit="take_profit" in fields,
     )
     return OrderResponse(trade_id=trade.id, message="Stop levels updated")
+
+
+@router.post("/orders/pending/{trade_id}/cancel", response_model=OrderResponse)
+def cancel_pending_order(
+    trade_id: int,
+    body: CancelPendingRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Cancel a pending limit or stop order."""
+    trade = sim_engine.cancel_pending_order(db, user.id, body.account_id, trade_id)
+    return OrderResponse(trade_id=trade.id, message=f"Order #{trade.id} cancelled")
 
 
 @router.get("/positions")

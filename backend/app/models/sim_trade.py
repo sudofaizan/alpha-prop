@@ -22,7 +22,8 @@ class SimTrade(Base):
     take_profit = mapped_column(Float, nullable=True)
     margin_used: Mapped[float] = mapped_column(Float, default=0.0)
     pnl = mapped_column(Float, nullable=True)
-    status: Mapped[str] = mapped_column(String(16), default="open", index=True)  # open | closed
+    order_type: Mapped[str] = mapped_column(String(16), default="market")  # market | limit | stop
+    status: Mapped[str] = mapped_column(String(16), default="open", index=True)  # pending | open | closed | cancelled
     close_reason = mapped_column(String(32), nullable=True)
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     closed_at = mapped_column(DateTime(timezone=True), nullable=True)

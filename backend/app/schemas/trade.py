@@ -6,8 +6,14 @@ class PlaceOrderRequest(BaseModel):
     symbol: str = Field(min_length=3, max_length=16)
     side: str = Field(pattern=r"^(?i)(buy|sell)$")
     volume: float = Field(gt=0, le=50)
+    order_type: str = Field(default="market", pattern=r"^(?i)(market|limit|stop)$")
+    price: float | None = None
     stop_loss: float | None = None
     take_profit: float | None = None
+
+
+class CancelPendingRequest(BaseModel):
+    account_id: int
 
 
 class ClosePositionRequest(BaseModel):

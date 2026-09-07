@@ -81,7 +81,9 @@
   let chartSource = "none";
   let tradingEnabled = false;
   let orderBusy = false;
+  let orderType = "market";
   const closingTradeIds = new Set();
+  let pendingReloadTimer = null;
 
   function toast(message, type = "info") {
     window.AlphaFXToast?.show(message, type);
@@ -228,6 +230,7 @@
     return {
       activeSymbol,
       open: tradeSnapshot.open || [],
+      pending: tradeSnapshot.pending || [],
       accountId,
       symbolMeta,
       fmtPrice,
@@ -457,7 +460,11 @@
   let liveMetricsRaf = null;
 
   function positionSymbols() {
-    return [...new Set((tradeSnapshot.open || []).map((p) => p.symbol).filter(Boolean))];
+    const syms = [
+      ...(tradeSnapshot.open || []).map((p) => p.symbol),
+      ...(tradeSnapshot.pending || []).map((p) => p.symbol),
+    ];
+    return [...new Set(syms.filter(Boolean))];
   }
 
   function syncPositionQuoteSubscriptions() {
@@ -558,6 +565,49 @@
     }
   }
 
+  function notifyPendingFills(fills) {
+    if (!fills?.length) return;
+    for (const f of fills) {
+      toast(`${f.symbol} · ${String(f.order_type || "order").toUpperCase()} ${f.side} filled @ ${f.price}`, "success");
+    }
+  }
+
+  function detectPendingFill(p, tick) {
+    const ot = String(p.order_type || "LIMIT").toLowerCase();
+    const price = Number(p.price);
+    const side = String(p.side || "").toUpperCase();
+    const bid = Number(tick.bid);
+    const ask = Number(tick.ask);
+    if (ot === "limit") {
+      if (side === "BUY") return ask <= price;
+      return bid >= price;
+    }
+    if (ot === "stop") {
+      if (side === "BUY") return ask >= price;
+      return bid <= price;
+    }
+    return false;
+  }
+
+  function schedulePendingReload() {
+    if (pendingReloadTimer) return;
+    pendingReloadTimer = setTimeout(async () => {
+      pendingReloadTimer = null;
+      await loadTradeSnapshot();
+    }, 400);
+  }
+
+  function checkPendingFills(tick) {
+    if (!tick || !accountId || orderBusy) return;
+    for (const p of tradeSnapshot.pending || []) {
+      if (p.symbol !== tick.symbol) continue;
+      if (detectPendingFill(p, tick)) {
+        schedulePendingReload();
+        break;
+      }
+    }
+  }
+
   function notifyStopHits(hits) {
     if (!hits?.length) return;
     for (const h of hits) {
@@ -588,9 +638,50 @@
 
   function setTradingControls(enabled) {
     tradingEnabled = Boolean(enabled);
-    ["trade-volume", "trade-sl", "trade-tp", "trade-buy-btn", "trade-sell-btn"].forEach((id) => {
+    const ids = ["trade-volume", "trade-sl", "trade-tp", "trade-price", "trade-buy-btn", "trade-sell-btn"];
+    ids.forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.disabled = !tradingEnabled || orderBusy;
+    });
+    document.querySelectorAll("#trade-order-type-tabs button").forEach((btn) => {
+      btn.disabled = !tradingEnabled || orderBusy;
+    });
+  }
+
+  function updateOrderTicketUI() {
+    const priceField = document.getElementById("trade-price-field");
+    const priceInput = document.getElementById("trade-price");
+    const isPending = orderType === "limit" || orderType === "stop";
+    if (priceField) priceField.hidden = !isPending;
+    if (priceInput) priceInput.required = isPending;
+
+    document.querySelectorAll("#trade-order-type-tabs button").forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.type === orderType);
+    });
+
+    const buyBtn = document.getElementById("trade-buy-btn");
+    const sellBtn = document.getElementById("trade-sell-btn");
+    if (orderType === "market") {
+      if (buyBtn) buyBtn.innerHTML = `BUY<br><span class="sub" id="trade-buy-px">—</span>`;
+      if (sellBtn) sellBtn.innerHTML = `SELL<br><span class="sub" id="trade-sell-px">—</span>`;
+      const tick = window.AlphaFXQuotes?.getLast(activeSymbol);
+      if (tick) updateTicket(tick);
+    } else {
+      const label = orderType === "limit" ? "Place limit" : "Place stop";
+      if (buyBtn) buyBtn.textContent = `${label} BUY`;
+      if (sellBtn) sellBtn.textContent = `${label} SELL`;
+    }
+  }
+
+  function bindOrderTypeTabs() {
+    document.querySelectorAll("#trade-order-type-tabs button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        if (!tradingEnabled || orderBusy) return;
+        const t = btn.dataset.type;
+        if (!t || t === orderType) return;
+        orderType = t;
+        updateOrderTicketUI();
+      });
     });
   }
 
@@ -608,24 +699,50 @@
       toast("Enter a valid volume (min 0.01 lots).", "error");
       return;
     }
+    const price = parseOptionalPrice(document.getElementById("trade-price")?.value);
+    if ((orderType === "limit" || orderType === "stop") && price == null) {
+      toast("Enter an order price for limit/stop orders.", "error");
+      return;
+    }
     orderBusy = true;
     setTradingControls(tradingEnabled);
     try {
-      await window.AlphaFXApi.request("/api/v1/trade/orders", {
+      const res = await window.AlphaFXApi.request("/api/v1/trade/orders", {
         method: "POST",
         body: JSON.stringify({
           account_id: accountId,
           symbol: activeSymbol,
           side,
           volume,
+          order_type: orderType,
+          price,
           stop_loss: parseOptionalPrice(document.getElementById("trade-sl")?.value),
           take_profit: parseOptionalPrice(document.getElementById("trade-tp")?.value),
         }),
       });
-      toast("Order filled", "success");
+      toast(res.message || (orderType === "market" ? "Order filled" : "Order placed"), "success");
       await loadTradeSnapshot();
     } catch (e) {
       toast(e?.message || "Order failed", "error");
+    } finally {
+      orderBusy = false;
+      setTradingControls(tradingEnabled);
+    }
+  }
+
+  async function cancelPendingOrder(tradeId) {
+    if (!accountId || orderBusy) return;
+    orderBusy = true;
+    setTradingControls(tradingEnabled);
+    try {
+      await window.AlphaFXApi.request(`/api/v1/trade/orders/pending/${tradeId}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({ account_id: accountId }),
+      });
+      toast("Pending order cancelled", "info");
+      await loadTradeSnapshot();
+    } catch (e) {
+      toast(e?.message || "Cancel failed", "error");
     } finally {
       orderBusy = false;
       setTradingControls(tradingEnabled);
@@ -655,9 +772,13 @@
     document.getElementById("trade-buy-btn")?.addEventListener("click", () => submitOrder("buy"));
     document.getElementById("trade-sell-btn")?.addEventListener("click", () => submitOrder("sell"));
     document.getElementById("trade-bottom-body")?.addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-close-trade]");
-      if (!btn) return;
-      closePosition(Number(btn.dataset.closeTrade));
+      const closeBtn = e.target.closest("[data-close-trade]");
+      if (closeBtn) {
+        closePosition(Number(closeBtn.dataset.closeTrade));
+        return;
+      }
+      const cancelBtn = e.target.closest("[data-cancel-pending]");
+      if (cancelBtn) cancelPendingOrder(Number(cancelBtn.dataset.cancelPending));
     });
   }
 
@@ -688,6 +809,7 @@
         mapAccountMetrics(tradeSnapshot.account);
       }
       notifyStopHits(tradeSnapshot.stop_hits);
+      notifyPendingFills(tradeSnapshot.pending_fills);
       setTradingControls(tradeSnapshot.trading_enabled && tradeSnapshot.account);
       renderAccountSelect(tradeSnapshot.accounts || [], accountId);
       syncPositionQuoteSubscriptions();
@@ -725,10 +847,36 @@
     if (!items?.length) {
       const msgs = {
         open: "No open positions. Place a simulated market order from the ticket.",
-        pending: "No pending orders (limit/stop coming soon).",
+        pending: "No pending limit or stop orders.",
         closed: "No closed trades yet.",
       };
       body.innerHTML = `<div class="trade-empty">${msgs[bottomPanel]}</div>`;
+      return;
+    }
+
+    if (bottomPanel === "pending") {
+      body.innerHTML = `<div class="trade-table-wrap"><table class="trade-table">
+        <thead><tr>
+          <th>Order ID</th><th>Created</th><th>Symbol</th><th>Side</th><th>Type</th>
+          <th>Volume</th><th>Price</th><th>SL</th><th>TP</th><th></th>
+        </tr></thead>
+        <tbody>${items
+          .map((r) => {
+            const fmt = (v) => (v == null || v === "" ? "—" : v);
+            return `<tr>
+          <td>${r.id ?? "—"}</td>
+          <td>${r.created ?? "—"}</td>
+          <td>${r.symbol ?? "—"}</td>
+          <td class="${(r.side || "").toLowerCase()}">${r.side ?? "—"}</td>
+          <td>${String(r.order_type || "LIMIT").toUpperCase()}</td>
+          <td>${r.volume ?? "—"}</td>
+          <td>${r.price ?? "—"}</td>
+          <td>${fmt(r.sl)}</td>
+          <td>${fmt(r.tp)}</td>
+          <td><button type="button" class="trade-cancel-btn" data-cancel-pending="${r.id}">Cancel</button></td>
+        </tr>`;
+          })
+          .join("")}</tbody></table></div>`;
       return;
     }
 
@@ -914,6 +1062,7 @@
   async function onTick(tick) {
     updateWatchlistPrice(tick);
     checkStopHits(tick);
+    checkPendingFills(tick);
     refreshLiveMetrics();
 
     if (tick.symbol !== activeSymbol) return;
@@ -940,6 +1089,8 @@
     bindBottomTabs();
     bindWatchlistToggle();
     bindTradeActions();
+    bindOrderTypeTabs();
+    updateOrderTicketUI();
     loadTimeframePref();
     renderTimeframes();
     bindTimeframes();

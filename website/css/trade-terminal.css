@@ -510,6 +510,20 @@
   background: rgba(239, 68, 68, 0.22);
 }
 
+.trade-cancel-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 6px;
+  border: 1px solid var(--trade-line);
+  background: rgba(234, 179, 8, 0.12);
+  color: #eab308;
+  cursor: pointer;
+}
+
+.trade-cancel-btn:hover {
+  background: rgba(234, 179, 8, 0.22);
+}
+
 .trade-toast-wrap {
   position: fixed;
   top: 72px;

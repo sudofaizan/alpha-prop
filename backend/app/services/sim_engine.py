@@ -94,6 +94,31 @@ def _require_account(db: Session, user_id: int, account_id: int) -> ChallengeAcc
     return account
 
 
+def _reserved_margin(db: Session, account_id: int) -> float:
+    trades = (
+        db.query(SimTrade)
+        .filter(SimTrade.account_id == account_id, SimTrade.status.in_(("open", "pending")))
+        .all()
+    )
+    return sum(float(t.margin_used or 0) for t in trades)
+
+
+def _validate_stops(side: str, entry: float, symbol: str, stop_loss: float | None, take_profit: float | None) -> None:
+    side = side.upper()
+    if stop_loss is not None:
+        sl = float(stop_loss)
+        if side == "BUY" and sl >= entry:
+            raise HTTPException(status_code=400, detail="Stop loss for BUY must be below entry")
+        if side == "SELL" and sl <= entry:
+            raise HTTPException(status_code=400, detail="Stop loss for SELL must be above entry")
+    if take_profit is not None:
+        tp = float(take_profit)
+        if side == "BUY" and tp <= entry:
+            raise HTTPException(status_code=400, detail="Take profit for BUY must be above entry")
+        if side == "SELL" and tp >= entry:
+            raise HTTPException(status_code=400, detail="Take profit for SELL must be below entry")
+
+
 def refresh_account_metrics(db: Session, account: ChallengeAccount) -> ChallengeAccount:
     open_trades = (
         db.query(SimTrade)
@@ -101,13 +126,11 @@ def refresh_account_metrics(db: Session, account: ChallengeAccount) -> Challenge
         .all()
     )
     open_pnl = 0.0
-    margin_used = 0.0
     for trade in open_trades:
         try:
             open_pnl += calc_unrealized_pnl(trade)
         except HTTPException:
             open_pnl += float(trade.pnl or 0.0)
-        margin_used += float(trade.margin_used or 0.0)
 
     account.open_pnl = round(open_pnl, 2)
     account.equity = round(account.balance + account.open_pnl, 2)
@@ -121,6 +144,9 @@ def trade_row(trade: SimTrade, *, live_pnl: float | None = None) -> dict:
     opened_time = None
     if trade.opened_at:
         opened_time = int(trade.opened_at.timestamp())
+    closed_time = None
+    if trade.closed_at:
+        closed_time = int(trade.closed_at.timestamp())
     return {
         "id": trade.id,
         "symbol": trade.symbol,
@@ -131,12 +157,79 @@ def trade_row(trade: SimTrade, *, live_pnl: float | None = None) -> dict:
         "opened": _fmt_dt(trade.opened_at),
         "opened_time": opened_time,
         "closed": _fmt_dt(trade.closed_at),
+        "closed_time": closed_time,
         "pnl": pnl,
         "reason": trade.close_reason or ("open" if trade.status == "open" else "—"),
         "sl": trade.stop_loss,
         "tp": trade.take_profit,
         "margin_used": trade.margin_used,
+        "order_type": trade.order_type or "market",
     }
+
+
+def pending_row(trade: SimTrade) -> dict:
+    return {
+        "id": trade.id,
+        "symbol": trade.symbol,
+        "side": trade.side,
+        "volume": trade.volume,
+        "price": _round_price(trade.symbol, trade.entry_price),
+        "order_type": (trade.order_type or "limit").upper(),
+        "sl": trade.stop_loss,
+        "tp": trade.take_profit,
+        "created": _fmt_dt(trade.opened_at),
+        "margin_used": trade.margin_used,
+    }
+
+
+def _pending_should_fill(trade: SimTrade, bid: float, ask: float) -> bool:
+    ot = (trade.order_type or "limit").lower()
+    price = float(trade.entry_price)
+    side = trade.side.upper()
+    if ot == "limit":
+        return (side == "BUY" and ask <= price) or (side == "SELL" and bid >= price)
+    if ot == "stop":
+        return (side == "BUY" and ask >= price) or (side == "SELL" and bid <= price)
+    return False
+
+
+def process_pending_fills(db: Session, account_id: int) -> list[dict]:
+    account = db.query(ChallengeAccount).filter(ChallengeAccount.id == account_id).one_or_none()
+    if not account:
+        return []
+
+    filled: list[dict] = []
+    pending = (
+        db.query(SimTrade)
+        .filter(SimTrade.account_id == account_id, SimTrade.status == "pending")
+        .all()
+    )
+    for trade in pending:
+        try:
+            bid, ask = _quote_prices(trade.symbol)
+        except HTTPException:
+            continue
+        if not _pending_should_fill(trade, bid, ask):
+            continue
+        fill_px = _round_price(trade.symbol, float(trade.entry_price))
+        trade.entry_price = fill_px
+        trade.status = "open"
+        db.add(trade)
+        filled.append(
+            {
+                "id": trade.id,
+                "symbol": trade.symbol,
+                "side": trade.side,
+                "order_type": trade.order_type,
+                "price": fill_px,
+            }
+        )
+
+    if filled:
+        db.commit()
+        refresh_account_metrics(db, account)
+        db.commit()
+    return filled
 
 
 def _detect_stop_hit(trade: SimTrade, bid: float, ask: float) -> str | None:
@@ -208,12 +301,19 @@ def process_stop_hits(db: Session, account_id: int) -> list[dict]:
 
 
 def snapshot_for_account(db: Session, account: ChallengeAccount) -> dict:
+    pending_fills = process_pending_fills(db, account.id)
     hits = process_stop_hits(db, account.id)
     db.refresh(account)
     account = refresh_account_metrics(db, account)
     open_trades = (
         db.query(SimTrade)
         .filter(SimTrade.account_id == account.id, SimTrade.status == "open")
+        .order_by(SimTrade.opened_at.desc())
+        .all()
+    )
+    pending_trades = (
+        db.query(SimTrade)
+        .filter(SimTrade.account_id == account.id, SimTrade.status == "pending")
         .order_by(SimTrade.opened_at.desc())
         .all()
     )
@@ -233,19 +333,21 @@ def snapshot_for_account(db: Session, account: ChallengeAccount) -> dict:
             live = 0.0
         open_rows.append(trade_row(trade, live_pnl=live))
 
+    pending_rows = [pending_row(t) for t in pending_trades]
     closed_rows = [trade_row(t) for t in closed_trades]
-    margin_used = sum(float(t.margin_used or 0) for t in open_trades)
+    margin_used = _reserved_margin(db, account.id)
 
     return {
         "mode": "simulated",
         "trading_enabled": account.status in TRADABLE_STATUSES,
         "open": open_rows,
-        "pending": [],
+        "pending": pending_rows,
         "closed": closed_rows,
         "stop_hits": hits,
+        "pending_fills": pending_fills,
         "counts": {
             "open": len(open_rows),
-            "pending": 0,
+            "pending": len(pending_rows),
             "closed": len(closed_rows),
         },
         "metrics": {
@@ -256,6 +358,97 @@ def snapshot_for_account(db: Session, account: ChallengeAccount) -> dict:
             "free_margin": round(max(0.0, account.equity - margin_used), 2),
         },
     }
+
+
+def place_order(
+    db: Session,
+    user_id: int,
+    account_id: int,
+    symbol: str,
+    side: str,
+    volume: float,
+    order_type: str = "market",
+    price: float | None = None,
+    stop_loss: float | None = None,
+    take_profit: float | None = None,
+) -> SimTrade:
+    ot = (order_type or "market").lower()
+    if ot == "market":
+        return open_market_order(db, user_id, account_id, symbol, side, volume, stop_loss, take_profit)
+    if ot not in ("limit", "stop"):
+        raise HTTPException(status_code=400, detail="order_type must be market, limit, or stop")
+    if price is None:
+        raise HTTPException(status_code=400, detail="price is required for limit and stop orders")
+    return place_pending_order(db, user_id, account_id, symbol, side, volume, ot, float(price), stop_loss, take_profit)
+
+
+def place_pending_order(
+    db: Session,
+    user_id: int,
+    account_id: int,
+    symbol: str,
+    side: str,
+    volume: float,
+    order_type: str,
+    trigger_price: float,
+    stop_loss: float | None = None,
+    take_profit: float | None = None,
+) -> SimTrade:
+    account = _require_account(db, user_id, account_id)
+    sym = symbol.upper()
+    meta = resolve_symbol(sym)
+    if not meta:
+        raise HTTPException(status_code=400, detail=f"Symbol {sym} not supported")
+
+    side_norm = side.upper()
+    if side_norm not in ("BUY", "SELL"):
+        raise HTTPException(status_code=400, detail="side must be buy or sell")
+    if volume < MIN_VOLUME or volume > MAX_VOLUME:
+        raise HTTPException(status_code=400, detail=f"volume must be between {MIN_VOLUME} and {MAX_VOLUME}")
+
+    trigger = _round_price(sym, trigger_price)
+    _validate_stops(side_norm, trigger, sym, stop_loss, take_profit)
+
+    margin = _margin_required(sym, volume, trigger)
+    account = refresh_account_metrics(db, account)
+    free_margin = account.equity - _reserved_margin(db, account.id)
+    if margin > free_margin:
+        raise HTTPException(status_code=400, detail="Insufficient free margin")
+
+    trade = SimTrade(
+        account_id=account.id,
+        symbol=sym,
+        side=side_norm,
+        volume=round(volume, 2),
+        entry_price=trigger,
+        stop_loss=_round_price(sym, stop_loss) if stop_loss is not None else None,
+        take_profit=_round_price(sym, take_profit) if take_profit is not None else None,
+        margin_used=margin,
+        order_type=order_type.lower(),
+        status="pending",
+    )
+    db.add(trade)
+    db.commit()
+    db.refresh(trade)
+    return trade
+
+
+def cancel_pending_order(db: Session, user_id: int, account_id: int, trade_id: int) -> SimTrade:
+    account = _require_account(db, user_id, account_id)
+    trade = (
+        db.query(SimTrade)
+        .filter(SimTrade.id == trade_id, SimTrade.account_id == account.id, SimTrade.status == "pending")
+        .one_or_none()
+    )
+    if not trade:
+        raise HTTPException(status_code=404, detail="Pending order not found")
+    trade.status = "cancelled"
+    trade.close_reason = "cancelled"
+    trade.closed_at = _utcnow()
+    db.add(trade)
+    db.commit()
+    db.refresh(trade)
+    return trade
 
 
 def open_market_order(
@@ -281,15 +474,10 @@ def open_market_order(
         raise HTTPException(status_code=400, detail=f"volume must be between {MIN_VOLUME} and {MAX_VOLUME}")
 
     entry = _entry_price(sym, side_norm)
+    _validate_stops(side_norm, entry, sym, stop_loss, take_profit)
     margin = _margin_required(sym, volume, entry)
     account = refresh_account_metrics(db, account)
-    open_trades = (
-        db.query(SimTrade)
-        .filter(SimTrade.account_id == account.id, SimTrade.status == "open")
-        .all()
-    )
-    margin_used = sum(float(t.margin_used or 0) for t in open_trades)
-    free_margin = account.equity - margin_used
+    free_margin = account.equity - _reserved_margin(db, account.id)
     if margin > free_margin:
         raise HTTPException(status_code=400, detail="Insufficient free margin")
 
@@ -299,9 +487,10 @@ def open_market_order(
         side=side_norm,
         volume=round(volume, 2),
         entry_price=entry,
-        stop_loss=stop_loss,
-        take_profit=take_profit,
+        stop_loss=_round_price(sym, stop_loss) if stop_loss is not None else None,
+        take_profit=_round_price(sym, take_profit) if take_profit is not None else None,
         margin_used=margin,
+        order_type="market",
         status="open",
     )
     db.add(trade)

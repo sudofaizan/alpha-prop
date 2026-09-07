@@ -10,6 +10,7 @@
   let container = null;
   let getContext = null;
   let overlays = new Map();
+  let pendingOverlays = new Map();
   let drag = null;
   let bound = false;
 
@@ -74,8 +75,20 @@
 
   function entryTitle(pos) {
     const pnl = Number(pos.pnl || 0);
-    const sign = pnl >= 0 ? "+" : "";
+    if (pnl === 0) return `${pos.side} ${pos.volume} · $0.00`;
+    const sign = pnl > 0 ? "+" : "-";
     return `${pos.side} ${pos.volume} · ${sign}$${Math.abs(pnl).toFixed(2)}`;
+  }
+
+  function removePendingOverlay(id) {
+    const o = pendingOverlays.get(id);
+    if (!o || !series) return;
+    try {
+      if (o.line) series.removePriceLine(o.line);
+    } catch {
+      /* ignore */
+    }
+    pendingOverlays.delete(id);
   }
 
   function removeOverlay(id) {
@@ -93,6 +106,7 @@
 
   function clear() {
     for (const id of [...overlays.keys()]) removeOverlay(id);
+    for (const id of [...pendingOverlays.keys()]) removePendingOverlay(id);
     drag = null;
     if (series) {
       try {
@@ -156,6 +170,19 @@
     });
   }
 
+  function upsertPendingOverlay(p) {
+    if (!series) return;
+    removePendingOverlay(p.id);
+
+    const price = Number(p.price);
+    const ot = String(p.order_type || "LIMIT").toUpperCase();
+    const color = ot === "LIMIT" ? "#eab308" : "#f97316";
+    const title = `${ot} ${p.side} ${p.volume} @ ${fmtPrice(p.symbol, price)}`;
+    const line = createLine(price, color, LC().LineStyle.Dotted, title);
+
+    pendingOverlays.set(p.id, { pos: p, line, priceVal: price });
+  }
+
   function syncMarkers(positions) {
     if (!series || !positions.length) {
       try {
@@ -204,9 +231,11 @@
     clear();
     if (!series || !chart) return;
 
-    const { activeSymbol, open = [] } = ctx();
+    const { activeSymbol, open = [], pending = [] } = ctx();
     const positions = open.filter((p) => p.symbol === activeSymbol);
+    const pendingOrders = pending.filter((p) => p.symbol === activeSymbol);
     positions.forEach(upsertOverlay);
+    pendingOrders.forEach(upsertPendingOverlay);
     syncMarkers(positions);
   }
 

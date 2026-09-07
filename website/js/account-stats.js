@@ -1,15 +1,71 @@
 /**
- * Account statistics — live equity / open P&L from simulated positions + tick stream.
+ * Account statistics — live equity / open P&L + trade history (Capify-style).
  */
 (function () {
   if (document.body.dataset.page !== "account-stats") return;
 
-  const money = (n) => `$${Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const money = (n) => {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return "—";
+    return `$${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"];
 
   let account = null;
   let snapshot = null;
   let symbolMeta = {};
   let liveRaf = null;
+  let accountId = null;
+
+  function fmtTradeDate(value, epochSec) {
+    const d = epochSec ? new Date(epochSec * 1000) : new Date(String(value || "").replace(" ", "T") + "Z");
+    if (Number.isNaN(d.getTime())) return value || "—";
+    const day = d.getUTCDate();
+    const mon = MONTHS[d.getUTCMonth()] || "";
+    const hh = String(d.getUTCHours()).padStart(2, "0");
+    const mm = String(d.getUTCMinutes()).padStart(2, "0");
+    const ss = String(d.getUTCSeconds()).padStart(2, "0");
+    return `${day} ${mon} · ${hh}:${mm}:${ss}`;
+  }
+
+  function fmtDuration(seconds) {
+    if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return "—";
+    const s = Math.floor(seconds);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    if (m < 60) return rem ? `${m}m ${rem}s` : `${m}m`;
+    const h = Math.floor(m / 60);
+    const rm = m % 60;
+    return rm ? `${h}h ${rm}m` : `${h}h`;
+  }
+
+  function sideChip(side) {
+    const s = String(side || "").toUpperCase();
+    const cls = s === "BUY" ? "pt-chip pt-chip--success" : "pt-chip pt-chip--danger";
+    return `<span class="${cls}">${s || "—"}</span>`;
+  }
+
+  function pnlHtml(pnl) {
+    if (pnl == null || pnl === "") return `<td class="is-num">—</td>`;
+    const n = Number(pnl);
+    const color = n > 0 ? "var(--success)" : n < 0 ? "var(--danger)" : "var(--text)";
+    const sign = n > 0 ? "+" : n < 0 ? "-" : "";
+    return `<td class="is-num" style="text-align:right;font-weight:700;color:${color}">${sign}${money(Math.abs(n))}</td>`;
+  }
+
+  function livePnlFor(pos) {
+    const tick = window.AlphaFXQuotes?.getLast(pos.symbol);
+    if (tick) {
+      return window.AlphaFXSimPnl.positionPnl(
+        { symbol: pos.symbol, side: pos.side, volume: pos.volume, entry: pos.entry },
+        tick,
+        symbolMeta[pos.symbol]
+      );
+    }
+    return Number(pos.pnl || 0);
+  }
 
   function computeLive() {
     const base = snapshot?.metrics || {};
@@ -18,24 +74,24 @@
     const open = snapshot?.open || [];
 
     if (!open.length) {
+      const equity = base.equity ?? account?.equity ?? balance;
       return {
         balance,
         open_pnl: base.open_pnl ?? account?.open_pnl ?? 0,
-        equity: base.equity ?? account?.equity ?? balance,
-        free_margin: (base.equity ?? balance) - marginUsed,
+        equity,
+        margin_used: marginUsed,
+        free_margin: Math.max(0, equity - marginUsed),
+        pnlById: {},
       };
     }
 
     let openPnl = 0;
+    const pnlById = {};
     for (const pos of open) {
-      const tick = window.AlphaFXQuotes?.getLast(pos.symbol);
-      openPnl += tick
-        ? window.AlphaFXSimPnl.positionPnl(
-            { symbol: pos.symbol, side: pos.side, volume: pos.volume, entry: pos.entry },
-            tick,
-            symbolMeta[pos.symbol]
-          )
-        : Number(pos.pnl || 0);
+      const pnl = livePnlFor(pos);
+      pnlById[pos.id] = pnl;
+      openPnl += pnl;
+      pos.pnl = pnl;
     }
     openPnl = Math.round(openPnl * 100) / 100;
     const equity = Math.round((balance + openPnl) * 100) / 100;
@@ -45,6 +101,7 @@
       equity,
       margin_used: marginUsed,
       free_margin: Math.round((equity - marginUsed) * 100) / 100,
+      pnlById,
     };
   }
 
@@ -65,6 +122,23 @@
     }
     if (fm) fm.textContent = money(live.free_margin);
     if (mu) mu.textContent = money(live.margin_used);
+
+    if (live.pnlById) {
+      for (const [id, v] of Object.entries(live.pnlById)) {
+        const cell = document.querySelector(`[data-stat-pnl="${id}"]`);
+        if (!cell) continue;
+        const n = Number(v);
+        cell.textContent = (n >= 0 ? "+" : "") + money(n);
+        cell.style.color = n > 0 ? "var(--success)" : n < 0 ? "var(--danger)" : "var(--text)";
+      }
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    document.querySelectorAll("[data-stat-duration]").forEach((el) => {
+      const opened = Number(el.dataset.statDuration);
+      if (!opened) return;
+      el.textContent = fmtDuration(now - opened);
+    });
   }
 
   function refreshLive() {
@@ -73,6 +147,124 @@
       liveRaf = null;
       paintLive();
     });
+  }
+
+  function emptyState(msg) {
+    return `<div style="padding:40px;text-align:center;color:var(--text-mute);font-size:12.5px;">${msg}</div>`;
+  }
+
+  function cardHead(title, sub, chip) {
+    return `<div style="padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;justify-content:space-between;align-items:center;gap:10px;">
+      <div><h3 class="pt-section-title" style="font-size:15px;">${title}</h3><p class="pt-section-sub">${sub}</p></div>
+      ${chip ? `<span class="pt-chip">${chip}</span>` : ""}
+    </div>`;
+  }
+
+  function renderOpenTable(rows) {
+    if (!rows.length) return emptyState("No open trades.");
+    return `<div class="pt-table-wrap"><table class="pt-table" style="min-width:960px;">
+      <thead><tr>
+        <th>Opened</th><th class="is-num">Duration</th><th>Symbol</th><th>Side</th>
+        <th class="is-num">Size</th><th class="is-num">Entry</th><th class="is-num">SL</th><th class="is-num">TP</th>
+        <th class="is-num" style="text-align:right;">P&amp;L</th><th>Reason</th>
+      </tr></thead>
+      <tbody>${rows
+        .map((r) => {
+          const pnl = r.pnl ?? livePnlFor(r);
+          const fmt = (v) => (v == null || v === "" ? "—" : v);
+          return `<tr>
+            <td class="is-num" style="color:var(--text-mute);white-space:nowrap;">${fmtTradeDate(r.opened, r.opened_time)}</td>
+            <td class="is-num" style="font-weight:600;" data-stat-duration="${r.opened_time || ""}">${r.opened_time ? fmtDuration(Math.floor(Date.now() / 1000) - r.opened_time) : "—"}</td>
+            <td style="font-weight:700;">${r.symbol ?? "—"}</td>
+            <td>${sideChip(r.side)}</td>
+            <td class="is-num">${r.volume ?? "—"}</td>
+            <td class="is-num">${r.entry ?? "—"}</td>
+            <td class="is-num">${fmt(r.sl)}</td>
+            <td class="is-num">${fmt(r.tp)}</td>
+            <td class="is-num" data-stat-pnl="${r.id}" style="text-align:right;font-weight:700;color:${Number(pnl) >= 0 ? "var(--success)" : Number(pnl) < 0 ? "var(--danger)" : "var(--text)"};">${(Number(pnl) >= 0 ? "+" : "") + money(pnl)}</td>
+            <td>${r.reason ?? "open"}</td>
+          </tr>`;
+        })
+        .join("")}</tbody></table></div>`;
+  }
+
+  function renderPendingTable(rows) {
+    if (!rows.length) return emptyState("No pending limit or stop orders.");
+    return `<div class="pt-table-wrap"><table class="pt-table" style="min-width:880px;">
+      <thead><tr>
+        <th>Created</th><th>Symbol</th><th>Side</th><th>Type</th>
+        <th class="is-num">Size</th><th class="is-num">Price</th><th class="is-num">SL</th><th class="is-num">TP</th>
+      </tr></thead>
+      <tbody>${rows
+        .map((r) => {
+          const fmt = (v) => (v == null || v === "" ? "—" : v);
+          return `<tr>
+            <td class="is-num" style="color:var(--text-mute);white-space:nowrap;">${fmtTradeDate(r.created)}</td>
+            <td style="font-weight:700;">${r.symbol ?? "—"}</td>
+            <td>${sideChip(r.side)}</td>
+            <td>${String(r.order_type || "LIMIT").toUpperCase()}</td>
+            <td class="is-num">${r.volume ?? "—"}</td>
+            <td class="is-num">${r.price ?? "—"}</td>
+            <td class="is-num">${fmt(r.sl)}</td>
+            <td class="is-num">${fmt(r.tp)}</td>
+          </tr>`;
+        })
+        .join("")}</tbody></table></div>`;
+  }
+
+  function renderClosedTable(rows) {
+    if (!rows.length) return emptyState("No closed trades yet.");
+    return `<div class="pt-table-wrap"><table class="pt-table" style="min-width:880px;">
+      <thead><tr>
+        <th>Opened</th><th>Closed</th><th class="is-num">Duration</th><th>Symbol</th><th>Side</th>
+        <th class="is-num">Size</th><th class="is-num">Entry</th><th class="is-num">Exit</th>
+        <th class="is-num" style="text-align:right;">P&amp;L</th><th>Reason</th>
+      </tr></thead>
+      <tbody>${rows
+        .map((r) => {
+          const dur =
+            r.opened_time && r.closed_time ? fmtDuration(r.closed_time - r.opened_time) : "—";
+          return `<tr>
+            <td class="is-num" style="color:var(--text-mute);white-space:nowrap;">${fmtTradeDate(r.opened, r.opened_time)}</td>
+            <td class="is-num" style="color:var(--text-mute);white-space:nowrap;">${fmtTradeDate(r.closed, r.closed_time)}</td>
+            <td class="is-num" style="font-weight:600;">${dur}</td>
+            <td style="font-weight:700;">${r.symbol ?? "—"}</td>
+            <td>${sideChip(r.side)}</td>
+            <td class="is-num">${r.volume ?? "—"}</td>
+            <td class="is-num">${r.entry ?? "—"}</td>
+            <td class="is-num">${r.exit ?? "—"}</td>
+            ${pnlHtml(r.pnl)}
+            <td>${r.reason ?? "—"}</td>
+          </tr>`;
+        })
+        .join("")}</tbody></table></div>`;
+  }
+
+  function renderTradeSections(snap) {
+    const open = snap?.open || [];
+    const pending = snap?.pending || [];
+    const closed = snap?.closed || [];
+    const openCount = snap?.counts?.open ?? open.length;
+    const pendingCount = snap?.counts?.pending ?? pending.length;
+    const closedCount = snap?.counts?.closed ?? closed.length;
+
+    const root = document.getElementById("stat-trades-root");
+    if (!root) return;
+
+    root.innerHTML = `
+      <div class="pt-card pt-card--flush">
+        ${cardHead("Open trades", "Currently active positions", `${openCount} active`)}
+        ${renderOpenTable(open)}
+      </div>
+      <div class="pt-card pt-card--flush">
+        ${cardHead("Pending orders", "Limit and stop orders waiting to fill", `${pendingCount} pending`)}
+        ${renderPendingTable(pending)}
+      </div>
+      <div class="pt-card pt-card--flush">
+        ${cardHead("Trade history", "All closed trades, sorted by time", `${closedCount} total`)}
+        ${renderClosedTable(closed)}
+      </div>`;
+    paintLive();
   }
 
   function render(scope, a, snap) {
@@ -92,28 +284,37 @@
         <div class="pt-stat-card"><div class="pt-stat-label">Margin used</div><div class="pt-stat-value" id="stat-margin-used">—</div></div>
         <div class="pt-stat-card"><div class="pt-stat-label">Profit target</div><div class="pt-stat-value">${a.profit_target_progress.toFixed(1)}%</div></div>
       </div>
-      <div class="pt-card" style="padding:24px;margin-top:16px;">
+      <div class="pt-card" style="padding:20px 24px;">
         <h2 class="pt-section-title">Trading activity</h2>
         <p class="pt-section-sub">${openCount} open · ${closedCount} closed · metrics update live with market prices</p>
         <p style="color:var(--text-dim);font-size:13px;margin:12px 0 0;">Daily loss used: ${a.daily_loss_used_pct}% · Overall loss used: ${a.overall_loss_used_pct}%</p>
-      </div>`;
-    paintLive();
+      </div>
+      <div id="stat-trades-root" style="display:flex;flex-direction:column;gap:16px;"></div>`;
+    renderTradeSections(snap);
+  }
+
+  async function reloadSnapshot() {
+    if (!accountId) return;
+    snapshot = await window.AlphaFXApi.request(`/api/v1/trade/snapshot?account_id=${encodeURIComponent(accountId)}`);
+    account = await window.AlphaFXApi.getAccount(accountId);
+    renderTradeSections(snapshot);
+    refreshLive();
   }
 
   async function boot() {
     const params = new URLSearchParams(window.location.search);
-    const id = params.get("id");
+    accountId = params.get("id");
     const scope = document.querySelector(".dfx-scope[data-screen-label='Account Detail']") || document.querySelector(".pt-page.dfx-scope");
-    if (!scope || !id) {
+    if (!scope || !accountId) {
       if (scope) scope.innerHTML = `<div class="pt-card" style="padding:32px;margin:28px;">Select an account from <a href="accounts.html">My Accounts</a>.</div>`;
       return;
     }
 
     try {
       const [a, symData, snap] = await Promise.all([
-        window.AlphaFXApi.getAccount(id),
+        window.AlphaFXApi.getAccount(accountId),
         window.AlphaFXApi.getMarketSymbols?.() || window.AlphaFXApi.request("/api/v1/market/symbols"),
-        window.AlphaFXApi.request(`/api/v1/trade/snapshot?account_id=${encodeURIComponent(id)}`),
+        window.AlphaFXApi.request(`/api/v1/trade/snapshot?account_id=${encodeURIComponent(accountId)}`),
       ]);
       account = a;
       snapshot = snap;
@@ -122,18 +323,16 @@
       });
       render(scope, a, snap);
 
-      const symbols = [...new Set((snap.open || []).map((p) => p.symbol))];
+      const symbols = [
+        ...new Set([...(snap.open || []), ...(snap.pending || [])].map((p) => p.symbol)),
+      ];
       const allSymbols = Object.values(symData.groups || {})
         .flat()
         .map((i) => i.symbol);
       window.AlphaFXQuotes.onTick(refreshLive);
       window.AlphaFXQuotes.connect(symbols.length ? [...new Set([...symbols, ...allSymbols])] : allSymbols);
       refreshLive();
-      setInterval(async () => {
-        snapshot = await window.AlphaFXApi.request(`/api/v1/trade/snapshot?account_id=${encodeURIComponent(id)}`);
-        account = await window.AlphaFXApi.getAccount(id);
-        refreshLive();
-      }, 15000);
+      setInterval(reloadSnapshot, 15000);
     } catch (err) {
       scope.innerHTML = `<div class="pt-card" style="padding:32px;margin:28px;color:var(--danger);">${err.message}</div>`;
     }

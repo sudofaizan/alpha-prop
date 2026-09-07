@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="css/capiffy/3ac04c147fc81d91.css">
   <link rel="stylesheet" href="css/capiffy/3c6a7efccbedf43f.css">
   <link rel="stylesheet" href="css/fonts.css">
-  <link rel="stylesheet" href="css/trade-terminal.css?v=20260907c">
+  <link rel="stylesheet" href="css/trade-terminal.css?v=20260907d">
 </head>
 <body data-page="trade" data-title="Trade" data-no-wrap="true">
   <div id="app-root">
@@ -58,8 +58,12 @@
         <aside class="trade-ticket">
           <div class="trade-ticket-tabs" id="trade-order-type-tabs">
             <button type="button" class="active" data-type="market">Market</button>
-            <button type="button" disabled data-type="limit">Limit</button>
-            <button type="button" disabled data-type="stop">Stop</button>
+            <button type="button" data-type="limit">Limit</button>
+            <button type="button" data-type="stop">Stop</button>
+          </div>
+          <div class="trade-field" id="trade-price-field" hidden>
+            <label for="trade-price">Order price</label>
+            <input id="trade-price" type="text" placeholder="Enter price">
           </div>
           <div class="trade-field">
             <label for="trade-volume">Volume (lots)</label>
@@ -105,7 +109,7 @@
   <script src="js/ws-quotes.js"></script>
   <script src="js/trade-toast.js"></script>
   <script src="js/sim-pnl.js"></script>
-  <script src="js/chart-positions.js"></script>
-  <script src="js/trade.js?v=20260907l"></script>
+  <script src="js/chart-positions.js?v=20260907a"></script>
+  <script src="js/trade.js?v=20260907n"></script>
 </body>
 </html>
