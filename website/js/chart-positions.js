@@ -31,8 +31,12 @@
   let dragHost = null;
   let selectedPosId = null;
   let mt5BarBound = false;
-  /** @type {'full' | 'close-only' | 'modify'} */
+  /** @type {'full' | 'close-only'} */
   let barMode = "full";
+  /** @type {'close' | 'modify'} */
+  let sliderPane = "close";
+  let sliderTouchStartX = 0;
+  let sliderBound = false;
 
   function ctx() {
     return getContext?.() || {};
@@ -146,7 +150,8 @@
     if (price == null) return false;
     const py = priceY(price);
     if (py == null) return false;
-    return Math.abs(y - py) <= HIT_PX;
+    const px = isMt5Mode() ? 28 : HIT_PX;
+    return Math.abs(y - py) <= px;
   }
 
   function findHit(y) {
@@ -429,6 +434,18 @@
     removeStopOverlay(o, "tp");
   }
 
+  function setSliderPane(pane, animate = true) {
+    sliderPane = pane;
+    const track = document.getElementById("mt5-pos-slider-track");
+    const wrap = document.getElementById("mt5-pos-slider-wrap");
+    if (track) {
+      track.classList.toggle("is-modify", pane === "modify");
+      if (!animate) track.style.transition = "none";
+      else track.style.transition = "";
+    }
+    if (wrap) wrap.classList.toggle("can-modify", pane === "modify" || overlayDirty(overlays.get(selectedPosId)));
+  }
+
   function updateMt5PosBar(pos) {
     const bar = document.getElementById("mt5-pos-bar");
     if (!bar) return;
@@ -437,6 +454,7 @@
       bar.setAttribute("aria-hidden", "true");
       document.body.classList.remove("mt5-pos-active");
       barMode = "full";
+      sliderPane = "close";
       return;
     }
     bar.hidden = false;
@@ -445,42 +463,40 @@
 
     const o = overlays.get(pos.id);
     const side = sideLabel(pos).toLowerCase();
-    const primary = document.getElementById("mt5-pos-close");
     const text = document.getElementById("mt5-pos-close-text");
     const vol = document.getElementById("mt5-pos-close-vol");
     const stops = document.getElementById("mt5-pos-stops");
     const dismiss = document.getElementById("mt5-pos-bar-dismiss");
     const slBtn = document.getElementById("mt5-pos-sl");
     const tpBtn = document.getElementById("mt5-pos-tp");
+    const wrap = document.getElementById("mt5-pos-slider-wrap");
 
-    const mode = overlayDirty(o) ? "modify" : barMode;
-    bar.classList.toggle("is-modify", mode === "modify");
-    bar.classList.toggle("is-close-only", mode === "close-only");
+    const dirty = overlayDirty(o);
+    bar.classList.toggle("is-close-only", barMode === "close-only");
+    wrap?.classList.toggle("can-modify", dirty);
 
-    if (mode === "modify") {
-      if (text) text.textContent = "Modify position";
-      if (vol) vol.hidden = true;
-      if (stops) stops.hidden = true;
-      if (dismiss) dismiss.hidden = false;
-    } else if (mode === "close-only") {
-      if (text) text.textContent = `Close ${side}`;
-      if (vol) {
-        vol.textContent = String(pos.volume);
-        vol.hidden = false;
-      }
+    if (dirty) {
+      setSliderPane("modify");
+    } else if (barMode === "close-only") {
+      setSliderPane("close");
+    }
+
+    if (text) text.textContent = `Close ${side}`;
+    if (vol) {
+      vol.textContent = String(pos.volume);
+      vol.hidden = false;
+    }
+
+    if (barMode === "close-only") {
       if (stops) stops.hidden = true;
       if (dismiss) dismiss.hidden = true;
+      wrap?.classList.remove("can-modify");
+      setSliderPane("close");
     } else {
-      if (text) text.textContent = `Close ${side}`;
-      if (vol) {
-        vol.textContent = String(pos.volume);
-        vol.hidden = false;
-      }
       if (stops) stops.hidden = false;
       if (dismiss) dismiss.hidden = false;
     }
 
-    primary?.classList.toggle("is-modify", mode === "modify");
     slBtn?.classList.toggle("is-active", !!o?.slVisible);
     tpBtn?.classList.toggle("is-active", !!o?.tpVisible);
   }
@@ -492,12 +508,13 @@
       const o = overlays.get(id);
       if (!o) return;
       if (overlayDirty(o)) {
-        barMode = "modify";
+        setSliderPane("modify");
       } else if (barMode === "close-only") {
         barMode = "full";
       } else {
         barMode = "close-only";
         hideAllStops(o);
+        setSliderPane("close");
       }
       layoutOverlay(o);
       updateMt5PosBar(o.pos);
@@ -538,6 +555,7 @@
     }
     selectedPosId = null;
     barMode = "full";
+    sliderPane = "close";
     if (clearBar) updateMt5PosBar(null);
     ctx().syncTicketStops?.({ sl: null, tp: null, slSaved: false, tpSaved: false, dragging: false });
   }
@@ -549,35 +567,22 @@
 
     const isSl = kind === "sl";
     const visible = isSl ? o.slVisible : o.tpVisible;
-    const dirty = isSl ? o.slDirty : o.tpDirty;
 
-    if (visible && !dirty) {
-      if (isSl) {
-        o.slVisible = false;
-        removeStopOverlay(o, "sl");
-      } else {
-        o.tpVisible = false;
-        removeStopOverlay(o, "tp");
-      }
-      if (!o.slVisible && !o.tpVisible && !overlayDirty(o)) {
-        barMode = "close-only";
-      }
-    } else if (!visible) {
-      if (isSl) {
-        o.slVal = o.slSaved ? Number(o.pos.sl) : defaultSl(o.pos);
-        o.slBaseline = o.slVal;
-        o.slDirty = false;
-        o.slVisible = true;
-      } else {
-        o.tpVal = o.tpSaved ? Number(o.pos.tp) : defaultTp(o.pos);
-        o.tpBaseline = o.tpVal;
-        o.tpDirty = false;
-        o.tpVisible = true;
-      }
-      barMode = "full";
-      refreshStopVisibility(o);
+    if (visible) return;
+
+    if (isSl) {
+      o.slVal = o.slSaved ? Number(o.pos.sl) : defaultSl(o.pos);
+      o.slBaseline = o.slVal;
+      o.slDirty = false;
+      o.slVisible = true;
+    } else {
+      o.tpVal = o.tpSaved ? Number(o.pos.tp) : defaultTp(o.pos);
+      o.tpBaseline = o.tpVal;
+      o.tpDirty = false;
+      o.tpVisible = true;
     }
-
+    barMode = "full";
+    refreshStopVisibility(o);
     layoutOverlay(o);
     updateMt5PosBar(o.pos);
     notifyTicket(o);
@@ -589,7 +594,7 @@
     } else {
       o.tpDirty = priceChanged(o.tpVal, o.tpBaseline, o.pos.symbol);
     }
-    if (overlayDirty(o)) barMode = "modify";
+    if (overlayDirty(o)) setSliderPane("modify");
     updateMt5PosBar(o.pos);
   }
 
@@ -632,6 +637,7 @@
         o.tpRow?.classList.remove("is-draft");
       }
       barMode = "full";
+      setSliderPane("close");
       window.AlphaFXToast?.show("Position modified", "success");
       updateMt5PosBar(o.pos);
       notifyTicket(o);
@@ -666,7 +672,7 @@
       }
       removeStopOverlay(o, kind);
       if (!overlayDirty(o) && !o.slVisible && !o.tpVisible) {
-        barMode = barMode === "modify" ? "full" : barMode;
+        setSliderPane("close");
       }
       layoutOverlay(o);
       updateMt5PosBar(o.pos);
@@ -930,11 +936,39 @@
     }
   }
 
+  function editingStops() {
+    if (!selectedPosId) return false;
+    const o = overlays.get(selectedPosId);
+    return !!(o && (o.slVisible || o.tpVisible || overlayDirty(o)));
+  }
+
+  function beginStopDrag(id, kind, ev) {
+    selectedPosId = id;
+    ev.preventDefault();
+    ev.stopPropagation();
+    drag = { id, kind, pointerId: ev.pointerId, moved: false };
+    document.body.style.cursor = "ns-resize";
+    overlayRoot?.classList.add("is-dragging");
+    chart.applyOptions({ handleScroll: false, handleScale: false });
+    (overlayRoot || container)?.setPointerCapture?.(ev.pointerId);
+  }
+
   function onPointerDown(ev) {
     if (!series || !chart || drag) return;
 
-    const cancelBtn = ev.target.closest("[data-cancel-stop]");
-    if (cancelBtn) return;
+    if (ev.target.closest("[data-cancel-stop]")) return;
+    if (ev.target.closest("#mt5-pos-bar")) return;
+
+    const stopRow = ev.target.closest(".cpf-pos-row--sl, .cpf-pos-row--tp");
+    if (stopRow && isMt5Mode()) {
+      const id = Number(stopRow.dataset.posId);
+      const kind = stopRow.dataset.kind;
+      if (id && (kind === "sl" || kind === "tp")) {
+        selectedPosId = id;
+        beginStopDrag(id, kind, ev);
+        return;
+      }
+    }
 
     const tag = ev.target.closest(".cpf-pos-tag");
     if (tag) {
@@ -942,25 +976,18 @@
       const id = Number(row?.dataset.posId);
       const kind = row?.dataset.kind;
       if (id && (kind === "sl" || kind === "tp")) {
-        if (isMt5Mode()) selectPosition(id);
-        ev.preventDefault();
-        ev.stopPropagation();
-        drag = { id, kind, pointerId: ev.pointerId, moved: false };
-        document.body.style.cursor = "ns-resize";
-        overlayRoot?.classList.add("is-dragging");
-        chart.applyOptions({ handleScroll: false, handleScale: false });
-        overlayRoot?.setPointerCapture?.(ev.pointerId);
+        selectedPosId = id;
+        beginStopDrag(id, kind, ev);
         return;
       }
     }
 
-    const entryLabel = ev.target.closest(".cpf-entry-label");
-    if (entryLabel) return;
+    if (ev.target.closest(".cpf-entry-label")) return;
 
     const y = chartY(ev.clientY);
     const hit = findHit(y);
     if (!hit) {
-      if (isMt5Mode() && selectedPosId && !ev.target.closest("#mt5-pos-bar")) {
+      if (isMt5Mode() && selectedPosId && !editingStops()) {
         deselectPosition();
       }
       return;
@@ -974,14 +1001,8 @@
     }
 
     if (hit.kind === "sl" || hit.kind === "tp") {
-      if (isMt5Mode()) selectPosition(hit.id);
-      ev.preventDefault();
-      ev.stopPropagation();
-      drag = { ...hit, pointerId: ev.pointerId, moved: false };
-      document.body.style.cursor = "ns-resize";
-      overlayRoot?.classList.add("is-dragging");
-      chart.applyOptions({ handleScroll: false, handleScale: false });
-      container?.setPointerCapture?.(ev.pointerId);
+      selectedPosId = hit.id;
+      beginStopDrag(hit.id, hit.kind, ev);
     }
   }
 
@@ -1023,19 +1044,59 @@
     if (moved && !isMt5Mode()) persistStops(id, kind);
   }
 
+  function bindMt5Slider() {
+    if (sliderBound) return;
+    sliderBound = true;
+    const wrap = document.getElementById("mt5-pos-slider-wrap");
+    if (!wrap) return;
+
+    wrap.addEventListener(
+      "touchstart",
+      (e) => {
+        sliderTouchStartX = e.touches[0]?.clientX ?? 0;
+      },
+      { passive: true }
+    );
+
+    wrap.addEventListener(
+      "touchend",
+      (e) => {
+        const o = overlays.get(selectedPosId);
+        if (!overlayDirty(o)) return;
+        const endX = e.changedTouches[0]?.clientX ?? 0;
+        const dx = endX - sliderTouchStartX;
+        if (dx < -36) setSliderPane("modify");
+        else if (dx > 36) setSliderPane("close");
+      },
+      { passive: true }
+    );
+
+    wrap.addEventListener("mousedown", (e) => {
+      sliderTouchStartX = e.clientX;
+    });
+
+    wrap.addEventListener("mouseup", (e) => {
+      const o = overlays.get(selectedPosId);
+      if (!overlayDirty(o)) return;
+      const dx = e.clientX - sliderTouchStartX;
+      if (dx < -36) setSliderPane("modify");
+      else if (dx > 36) setSliderPane("close");
+    });
+  }
+
   function bindMt5PosBar() {
     if (mt5BarBound) return;
     mt5BarBound = true;
+    bindMt5Slider();
 
-    document.getElementById("mt5-pos-close")?.addEventListener("click", () => {
+    document.getElementById("mt5-pos-pane-close")?.addEventListener("click", () => {
       if (!selectedPosId) return;
-      const o = overlays.get(selectedPosId);
-      if (overlayDirty(o) || barMode === "modify") {
-        modifyPosition();
-        return;
-      }
       ctx().closePosition?.(selectedPosId);
       deselectPosition();
+    });
+
+    document.getElementById("mt5-pos-pane-modify")?.addEventListener("click", () => {
+      modifyPosition();
     });
 
     document.getElementById("mt5-pos-sl")?.addEventListener("click", () => showStopEditor("sl"));

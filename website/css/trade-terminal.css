@@ -507,6 +507,28 @@
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
 }
 
+body[data-page="trade"].trade-mt5-mode .cpf-pos-row--sl,
+body[data-page="trade"].trade-mt5-mode .cpf-pos-row--tp {
+  pointer-events: auto;
+  cursor: ns-resize;
+  z-index: 5;
+}
+
+body[data-page="trade"].trade-mt5-mode .cpf-pos-row--sl::after,
+body[data-page="trade"].trade-mt5-mode .cpf-pos-row--tp::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -24px;
+  height: 48px;
+}
+
+body[data-page="trade"].trade-mt5-mode .trade-pos-overlays.is-dragging .cpf-pos-row--sl,
+body[data-page="trade"].trade-mt5-mode .trade-pos-overlays.is-dragging .cpf-pos-row--tp {
+  cursor: ns-resize;
+}
+
 .cpf-pos-tag::after {
   content: "";
   position: absolute;
@@ -1336,31 +1358,76 @@ body[data-page="trade"] .dashboard-main {
     display: none !important;
   }
 
-  .mt5-pos-primary {
+  .mt5-pos-slider-wrap {
     flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    border-radius: 999px;
+    touch-action: pan-y;
+  }
+
+  .mt5-pos-slider-wrap.can-modify {
+    touch-action: none;
+  }
+
+  .mt5-pos-slider-track {
+    display: flex;
+    width: 200%;
+    transform: translateX(0);
+    transition: transform 0.28s cubic-bezier(0.25, 1, 0.5, 1);
+  }
+
+  .mt5-pos-slider-track.is-modify {
+    transform: translateX(-50%);
+  }
+
+  .mt5-pos-pane {
+    flex: 0 0 50%;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 8px;
     min-height: 44px;
     padding: 0 14px;
     border: none;
-    border-radius: 999px;
-    background: linear-gradient(180deg, #f97316, #ea580c);
     color: #fff;
     font-size: 14px;
     font-weight: 700;
     cursor: pointer;
-    box-shadow: 0 2px 10px rgba(249, 115, 22, 0.35);
-    transition: background 0.18s ease, transform 0.12s ease;
+    white-space: nowrap;
   }
 
-  .mt5-pos-primary.is-modify {
+  .mt5-pos-pane--close {
+    background: linear-gradient(180deg, #f97316, #ea580c);
+    box-shadow: 0 2px 10px rgba(249, 115, 22, 0.35);
+    border-radius: 999px 0 0 999px;
+  }
+
+  .mt5-pos-slider-wrap:not(.can-modify) .mt5-pos-pane--close {
+    border-radius: 999px;
+  }
+
+  .mt5-pos-pane--modify {
     background: linear-gradient(180deg, #3b82f6, #2563eb);
     box-shadow: 0 2px 10px rgba(37, 99, 235, 0.35);
+    border-radius: 0 999px 999px 0;
   }
 
-  .mt5-pos-primary:active {
-    transform: scale(0.98);
+  .mt5-pos-pane:active {
+    filter: brightness(1.08);
+  }
+
+  .mt5-pos-slider-wrap:not(.can-modify) .mt5-pos-slider-track {
+    width: 100%;
+    transform: none !important;
+  }
+
+  .mt5-pos-slider-wrap:not(.can-modify) .mt5-pos-pane--modify {
+    display: none;
+  }
+
+  .mt5-pos-slider-wrap:not(.can-modify) .mt5-pos-pane--close {
+    flex: 1 1 100%;
   }
 
   .mt5-pos-stops {
@@ -1378,7 +1445,7 @@ body[data-page="trade"] .dashboard-main {
     justify-content: center;
   }
 
-  .mt5-pos-bar.is-close-only .mt5-pos-primary {
+  .mt5-pos-bar.is-close-only .mt5-pos-slider-wrap {
     max-width: 100%;
   }
 
