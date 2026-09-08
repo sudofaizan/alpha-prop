@@ -19,6 +19,8 @@
   let draftCounter = 1;
   let repositionScheduled = false;
   let rangeSubscribed = false;
+  /** @type {Map<string, { unixSec: number, barTime: number }>} */
+  const fillAnchors = new Map();
 
   function ctx() {
     return getContext?.() || {};
@@ -117,61 +119,110 @@
     return getPlotFrame().top + y;
   }
 
+  function normalizeUnixSec(t) {
+    const n = Number(t);
+    if (!Number.isFinite(n)) return null;
+    return n > 1e12 ? Math.floor(n / 1000) : Math.floor(n);
+  }
+
   function resolveBarTime(unixSec) {
-    if (unixSec == null) return ctx().fallbackTime?.() ?? null;
+    const sec = normalizeUnixSec(unixSec);
+    if (sec == null) return ctx().fallbackTime?.() ?? null;
+
     const bars = ctx().barBuffer || [];
     const step = ctx().tfStep?.(ctx().activeTimeframe) || 60;
-    const snapped = ctx().snapBarTime?.(unixSec) ?? unixSec;
+    const nowSec = Math.floor(Date.now() / 1000);
 
-    if (!bars.length) return snapped;
+    if (!bars.length) {
+      return ctx().snapBarTime?.(sec) ?? sec;
+    }
 
     const last = bars[bars.length - 1];
 
-    // Opened on the current forming candle → anchor to that bar exactly
-    if (snapped >= last.time && snapped < last.time + step) {
+    // Live fill within the current candle window → snap to forming bar
+    if (nowSec - sec <= step * 2) {
       return last.time;
     }
 
-    // Exact bar match in loaded history
+    // Which bar was open at this exact second?
+    for (let i = bars.length - 1; i >= 0; i--) {
+      const b = bars[i];
+      if (sec >= b.time && sec < b.time + step) {
+        return b.time;
+      }
+    }
+
+    const snapped = ctx().snapBarTime?.(sec) ?? sec;
     for (let i = bars.length - 1; i >= 0; i--) {
       if (bars[i].time === snapped) return bars[i].time;
     }
 
-    // Nearest loaded bar (scroll/zoom edge cases)
-    let best = last.time;
-    let bestDist = Math.abs(last.time - snapped);
-    for (const b of bars) {
-      const d = Math.abs(b.time - snapped);
-      if (d < bestDist) {
-        bestDist = d;
-        best = b.time;
-      }
+    if (snapped >= last.time && snapped < last.time + step) {
+      return last.time;
     }
-    return best;
+
+    return snapped;
   }
 
   function resolvePositionTime(position) {
+    const id = String(position.id ?? "");
+    const anchor = fillAnchors.get(id);
+    if (anchor?.barTime != null) return anchor.barTime;
+
     if (position.opened_time != null) {
       return resolveBarTime(position.opened_time);
     }
     if (position.time != null) {
       return resolveBarTime(position.time);
     }
-    return resolveBarTime(Math.floor(Date.now() / 1000));
+    return ctx().fallbackTime?.() ?? resolveBarTime(nowSec());
+  }
+
+  function nowSec() {
+    return Math.floor(Date.now() / 1000);
+  }
+
+  function setFillAnchor(tradeId, anchor) {
+    if (tradeId == null || !anchor?.barTime) return;
+    fillAnchors.set(String(tradeId), {
+      unixSec: normalizeUnixSec(anchor.unixSec) ?? nowSec(),
+      barTime: anchor.barTime,
+    });
+    scheduleReposition();
+  }
+
+  function clearFillAnchor(tradeId) {
+    fillAnchors.delete(String(tradeId));
   }
 
   function timeToLocalX(time) {
     if (!chart || time == null) return null;
     const ts = chart.timeScale();
-    let x = ts.timeToCoordinate(time);
-    // Fallback: map via bar index when time is in buffer but not yet indexed
-    if (x == null) {
-      const bars = ctx().barBuffer || [];
-      const idx = bars.findIndex((b) => b.time === time);
-      if (idx >= 0) {
+    const bars = ctx().barBuffer || [];
+    let x = null;
+
+    const idx = bars.findIndex((b) => b.time === time);
+    if (idx >= 0) {
+      try {
         x = ts.logicalToCoordinate(idx);
+      } catch {
+        /* fallback below */
       }
     }
+
+    if (x == null) {
+      try {
+        const logical = ts.timeToLogical?.(time);
+        if (logical != null) x = ts.logicalToCoordinate(logical);
+      } catch {
+        /* fallback below */
+      }
+    }
+
+    if (x == null) {
+      x = ts.timeToCoordinate(time);
+    }
+
     if (x == null) return null;
     return getPlotFrame().left + x;
   }
@@ -643,6 +694,7 @@
     view.tpPriceTag.remove();
     views.delete(id);
     if (activeId === id) setActive(null);
+    if (!isDraftId(id)) clearFillAnchor(id);
   }
 
   function clearSl(id) {
@@ -1023,6 +1075,7 @@
 
   function clear() {
     for (const id of [...views.keys()]) removeView(id);
+    fillAnchors.clear();
   }
 
   function attach({ chart: c, series: s, container: el, getContext: gc }) {
@@ -1071,5 +1124,7 @@
     openDraft,
     setActive,
     reposition: scheduleReposition,
+    setFillAnchor,
+    currentBarTime: () => ctx().fallbackTime?.() ?? null,
   };
 })();

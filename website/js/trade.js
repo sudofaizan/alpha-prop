@@ -287,7 +287,16 @@
       }),
     });
     toast(res.message || "Order placed", "success");
+    const fillSec = Math.floor(Date.now() / 1000);
+    const barTime =
+      barBuffer.length > 0
+        ? barBuffer[barBuffer.length - 1].time
+        : barBucket(fillSec * 1000, activeTimeframe);
+    if (res.trade_id != null) {
+      window.AlphaFXPositionOverlay?.setFillAnchor?.(res.trade_id, { unixSec: fillSec, barTime });
+    }
     await loadTradeSnapshot();
+    window.AlphaFXPositionOverlay?.sync?.();
   }
 
   function bindChartPositions(container) {
@@ -1016,6 +1025,17 @@
         method: "POST",
         body: JSON.stringify(body),
       });
+      const fillSec = Math.floor(Date.now() / 1000);
+      const barTime =
+        barBuffer.length > 0
+          ? barBuffer[barBuffer.length - 1].time
+          : barBucket(fillSec * 1000, activeTimeframe);
+      if (res.trade_id != null) {
+        window.AlphaFXPositionOverlay?.setFillAnchor?.(res.trade_id, {
+          unixSec: fillSec,
+          barTime,
+        });
+      }
       toast(res.message || (orderType === "market" ? "Order filled" : "Order placed"), "success");
       await loadTradeSnapshot();
     } catch (e) {
