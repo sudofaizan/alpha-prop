@@ -1407,7 +1407,17 @@
 
   function clearTp(id) {
     const view = views.get(id);
-    if (!view || view.position.tp == null) return;
+    if (!view) return;
+    if (view.drag?.kind === "tp") {
+      const preview = view.drag.previewLine;
+      view.drag = null;
+      if (preview) removeLine(preview);
+      applyLineStyles();
+      updatePnlDisplay(view);
+      scheduleReposition();
+      return;
+    }
+    if (view.position.tp == null) return;
     clearLevelLine(view, "tp");
     view.position.tp = null;
     if (!isDraftId(id)) {
