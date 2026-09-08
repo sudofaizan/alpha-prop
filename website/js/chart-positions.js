@@ -52,6 +52,14 @@
     return !!ctx().isMt5Mobile?.();
   }
 
+  function isLiteChartUi() {
+    return isMt5Mode() || document.body.classList.contains("trade-clean-mode");
+  }
+
+  function isCleanDesktop() {
+    return document.body.classList.contains("trade-clean-mode");
+  }
+
   function fmtPrice(symbol, value) {
     const fn = ctx().fmtPrice;
     return fn ? fn(symbol, value) : Number(value).toFixed(2);
@@ -124,7 +132,7 @@
   }
 
   function updateTagPrices(o) {
-    if (isMt5Mode()) {
+    if (isLiteChartUi()) {
       if (o.slRow && isStopActive(o, "sl")) {
         const el = o.slRow.querySelector(".cpf-mt5-text-main");
         if (el) el.textContent = `SL, ${fmtTagPnl(pnlAtPrice(o.pos, o.slVal))}`;
@@ -183,6 +191,7 @@
   }
 
   function shouldShowSl(o) {
+    if (isCleanDesktop()) return o.slSaved;
     if (!isMt5Mode()) return true;
     if (o.slSaved) return true;
     if (selectedPosId === o.pos.id && o.slVisible) return true;
@@ -190,6 +199,7 @@
   }
 
   function shouldShowTp(o) {
+    if (isCleanDesktop()) return o.tpSaved;
     if (!isMt5Mode()) return true;
     if (o.tpSaved) return true;
     if (selectedPosId === o.pos.id && o.tpVisible) return true;
@@ -197,6 +207,11 @@
   }
 
   function isStopActive(o, kind) {
+    if (isCleanDesktop()) {
+      const dragging = drag && drag.id === o.pos.id && drag.kind === kind;
+      if (kind === "sl") return o.slDirty || dragging;
+      return o.tpDirty || dragging;
+    }
     if (!isMt5Mode()) return false;
     if (selectedPosId !== o.pos.id) return false;
     const dragging = drag && drag.id === o.pos.id && drag.kind === kind;
@@ -205,6 +220,7 @@
   }
 
   function stopLineSolid(o, kind) {
+    if (isCleanDesktop()) return isStopActive(o, kind);
     if (!isMt5Mode()) {
       return kind === "sl" ? o.slSaved && !o.slDirty : o.tpSaved && !o.tpDirty;
     }
@@ -329,14 +345,14 @@
   }
 
   function buildEntryPill(pos) {
-    const mt5 = isMt5Mode();
+    const lite = isLiteChartUi();
     const side = sideLabel(pos);
     const isBuy = side === "BUY";
     const row = document.createElement("div");
     row.className = `cpf-pos-row cpf-pos-row--entry${selectedPosId === pos.id ? " is-selected" : ""}`;
     row.dataset.posId = String(pos.id);
 
-    if (mt5) {
+    if (lite) {
       row.innerHTML = `<span class="cpf-mt5-text cpf-mt5-text--entry">${side} ${pos.volume}</span>`;
       row.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -368,7 +384,7 @@
     row.dataset.posId = String(pos.id);
     row.dataset.kind = kind;
 
-    if (isMt5Mode()) {
+    if (isLiteChartUi()) {
       const pnl = pnlAtPrice(pos, levelPrice);
       const label = active
         ? `${kind.toUpperCase()}, ${fmtTagPnl(pnl)}`
@@ -843,9 +859,9 @@
     const entry = Number(pos.entry);
     const slSaved = hasSl(pos);
     const tpSaved = hasTp(pos);
-    const mt5 = isMt5Mode();
+    const lite = isLiteChartUi();
 
-    const entryLine = isMt5Mode()
+    const entryLine = lite
       ? createMt5EntryLine(entry)
       : createLine(entry, COLORS.entry, true, COLORS.entryAxis, COLORS.entryText);
     const entryRow = buildEntryPill(pos);
@@ -860,8 +876,8 @@
       tpVal: tpSaved ? Number(pos.tp) : defaultTp(pos),
       slSaved,
       tpSaved,
-      slVisible: mt5 ? false : true,
-      tpVisible: mt5 ? false : true,
+      slVisible: lite ? false : true,
+      tpVisible: lite ? false : true,
       slDirty: false,
       tpDirty: false,
       slBaseline: slSaved ? Number(pos.sl) : null,
@@ -884,7 +900,7 @@
 
     overlays.set(pos.id, record);
 
-    if (!mt5) {
+    if (!lite) {
       record.slLine = createLine(record.slVal, COLORS.sl, slSaved, COLORS.slAxis, COLORS.slText);
       record.tpLine = createLine(record.tpVal, COLORS.tp, tpSaved, COLORS.tpAxis, COLORS.tpText);
       record.slRow = buildTag("sl", pos, record.slVal, true);
@@ -893,7 +909,7 @@
     } else if (prevState && (prevState.selected || selectedPosId === pos.id)) {
       if (prevState.selected) selectedPosId = pos.id;
       refreshStopVisibility(record);
-    } else if (mt5 && (slSaved || tpSaved)) {
+    } else if (lite && (slSaved || tpSaved)) {
       refreshStopVisibility(record);
     }
 

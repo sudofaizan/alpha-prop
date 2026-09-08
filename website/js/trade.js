@@ -169,32 +169,32 @@
     if (!chart) {
       chartMount = container;
       chart = window.LightweightCharts.createChart(container, {
-        layout: { background: { color: "#0f0f14" }, textColor: "#a1a1aa" },
-        grid: { vertLines: { color: "#1f1f28" }, horzLines: { color: "#1f1f28" } },
+        layout: { background: { color: "#0b0e11" }, textColor: "#848e9c" },
+        grid: { vertLines: { color: "#1e2329" }, horzLines: { color: "#1e2329" } },
         crosshair: {
           mode: window.LightweightCharts.CrosshairMode.Normal,
           vertLine: {
-            color: "rgba(255, 255, 255, 0.55)",
+            color: "rgba(234, 236, 239, 0.35)",
             width: 1,
             style: window.LightweightCharts.LineStyle.Dashed,
-            labelBackgroundColor: "#27272a",
+            labelBackgroundColor: "#2b3139",
           },
           horzLine: {
-            color: "rgba(255, 255, 255, 0.55)",
+            color: "rgba(234, 236, 239, 0.35)",
             width: 1,
             style: window.LightweightCharts.LineStyle.Dashed,
-            labelBackgroundColor: "#27272a",
+            labelBackgroundColor: "#2b3139",
           },
         },
-        timeScale: { timeVisible: true, secondsVisible: false },
-        rightPriceScale: { borderColor: "#27272a" },
+        timeScale: { timeVisible: true, secondsVisible: false, borderColor: "#1e2329" },
+        rightPriceScale: { borderColor: "#1e2329" },
       });
       series = chart.addCandlestickSeries({
-        upColor: "#22c55e",
-        downColor: "#ef4444",
+        upColor: "#0ecb81",
+        downColor: "#f6465d",
         borderVisible: false,
-        wickUpColor: "#22c55e",
-        wickDownColor: "#ef4444",
+        wickUpColor: "#0ecb81",
+        wickDownColor: "#f6465d",
       });
       applyTimeScaleOptions();
       const body = chartBodyEl(container);
@@ -354,6 +354,7 @@
       activeTimeframe = tf;
       saveTimeframePref();
       renderTimeframes();
+      syncCleanTitle(activeSymbol);
       applyTimeScaleOptions();
       loadChart(activeSymbol);
     });
@@ -392,24 +393,29 @@
   }
 
   function renderSymbolTabs() {
-    const root = document.getElementById("trade-symbol-tabs");
-    if (!root) return;
-    root.innerHTML = "";
-    openTabs.forEach((sym) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "trade-symbol-tab" + (sym === activeSymbol ? " active" : "");
-      btn.dataset.symbol = sym;
-      btn.innerHTML = `${sym}<span class="trade-tab-close" data-close="${sym}" aria-label="Close">×</span>`;
-      btn.addEventListener("click", (e) => {
-        if (e.target.closest("[data-close]")) return;
-        selectSymbol(sym);
+    const roots = [
+      document.getElementById("trade-symbol-tabs"),
+      document.getElementById("trade-clean-symbols"),
+    ].filter(Boolean);
+    if (!roots.length) return;
+    roots.forEach((root) => {
+      root.innerHTML = "";
+      openTabs.forEach((sym) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "trade-symbol-tab" + (sym === activeSymbol ? " active" : "");
+        btn.dataset.symbol = sym;
+        btn.innerHTML = `${sym}<span class="trade-tab-close" data-close="${sym}" aria-label="Close">×</span>`;
+        btn.addEventListener("click", (e) => {
+          if (e.target.closest("[data-close]")) return;
+          selectSymbol(sym);
+        });
+        btn.querySelector("[data-close]")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          closeTab(sym);
+        });
+        root.appendChild(btn);
       });
-      btn.querySelector("[data-close]")?.addEventListener("click", (e) => {
-        e.stopPropagation();
-        closeTab(sym);
-      });
-      root.appendChild(btn);
     });
   }
 
@@ -473,11 +479,147 @@
   }
 
   function updateChartBadge(symbol) {
+    syncCleanTitle(symbol);
     const badge = document.getElementById("trade-chart-badge");
     if (!badge || !barBuffer.length) return;
     const src =
       chartSource === "mt5" ? "MT5" : chartSource === "synthetic" ? "Simulated" : "Live";
     badge.textContent = `${src} | ${symbol} · ${tfLabel(activeTimeframe)} · ${barBuffer.length} bars`;
+  }
+
+  function syncCleanTitle(symbol) {
+    const title = document.getElementById("trade-clean-title");
+    if (!title || !document.body.classList.contains("trade-clean-mode")) return;
+    const sym = symbol || activeSymbol || "—";
+    const bars = barBuffer.length ? `${barBuffer.length} bars` : "loading";
+    title.textContent = `${sym} · ${tfLabel(activeTimeframe)} · ${bars}`;
+  }
+
+  function updatePositionsBtn() {
+    const btn = document.getElementById("trade-positions-btn");
+    if (!btn) return;
+    const open = tradeSnapshot.open?.length || 0;
+    const pending = tradeSnapshot.pending?.length || 0;
+    const total = open + pending;
+    btn.textContent = total ? `Positions (${total})` : "Positions";
+  }
+
+  function togglePositionsSheet(open) {
+    const panel = document.getElementById("trade-bottom");
+    if (!panel) return;
+    const next = open ?? !panel.classList.contains("is-open");
+    panel.classList.toggle("is-open", next);
+  }
+
+  let cleanWidgetBound = false;
+
+  function bindCleanTradeWidget() {
+    if (cleanWidgetBound) return;
+    cleanWidgetBound = true;
+
+    const ticket = document.getElementById("trade-ticket");
+    const header = document.getElementById("afx-trade-header");
+    const body = document.getElementById("afx-trade-body");
+    const collapse = document.getElementById("afx-trade-collapse");
+
+    collapse?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!ticket || !body) return;
+      const expanded = body.hidden;
+      body.hidden = !expanded;
+      ticket.classList.toggle("afx-trade-widget--collapsed", !expanded);
+      collapse.textContent = expanded ? "−" : "+";
+      collapse.setAttribute("aria-expanded", expanded ? "true" : "false");
+      collapse.title = expanded ? "Collapse panel" : "Expand panel";
+      resizeChartSoon();
+    });
+
+    document.getElementById("trade-positions-btn")?.addEventListener("click", () => {
+      togglePositionsSheet();
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") togglePositionsSheet(false);
+    });
+
+    if (!header || !ticket) return;
+
+    let dragging = false;
+    let startX = 0;
+    let startY = 0;
+    let originLeft = 0;
+    let originTop = 0;
+
+    const onMove = (e) => {
+      if (!dragging) return;
+      const pt = e.touches?.[0] || e;
+      const dx = pt.clientX - startX;
+      const dy = pt.clientY - startY;
+      const parent = ticket.offsetParent?.getBoundingClientRect();
+      if (!parent) return;
+      const maxLeft = Math.max(0, parent.width - ticket.offsetWidth);
+      const maxTop = Math.max(0, parent.height - ticket.offsetHeight);
+      const left = Math.min(maxLeft, Math.max(0, originLeft + dx));
+      const top = Math.min(maxTop, Math.max(0, originTop + dy));
+      ticket.style.left = `${left}px`;
+      ticket.style.top = `${top}px`;
+      ticket.style.right = "auto";
+      ticket.style.bottom = "auto";
+    };
+
+    const onUp = () => {
+      dragging = false;
+      header.style.cursor = "grab";
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onUp);
+    };
+
+    header.addEventListener("mousedown", (e) => {
+      if (!document.body.classList.contains("trade-clean-mode")) return;
+      if (e.target.closest("button, select, input")) return;
+      dragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      originLeft = ticket.offsetLeft;
+      originTop = ticket.offsetTop;
+      header.style.cursor = "grabbing";
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    });
+
+    header.addEventListener("touchstart", (e) => {
+      if (!document.body.classList.contains("trade-clean-mode")) return;
+      if (e.target.closest("button, select, input")) return;
+      const pt = e.touches[0];
+      dragging = true;
+      startX = pt.clientX;
+      startY = pt.clientY;
+      originLeft = ticket.offsetLeft;
+      originTop = ticket.offsetTop;
+      window.addEventListener("touchmove", onMove, { passive: false });
+      window.addEventListener("touchend", onUp);
+    }, { passive: true });
+  }
+
+  function mountCleanTicket() {
+    const main = document.getElementById("trade-main");
+    const chartBody = document.querySelector(".trade-chart-body");
+    const ticket = document.getElementById("trade-ticket");
+    if (!main || !chartBody || !ticket) return;
+
+    const mobile = window.matchMedia("(max-width: 960px)").matches;
+    if (mobile) {
+      if (ticket.parentElement !== main) main.appendChild(ticket);
+      ticket.classList.remove("afx-trade-widget", "afx-trade-widget--collapsed");
+      ticket.style.left = "";
+      ticket.style.top = "";
+      return;
+    }
+
+    if (ticket.parentElement !== chartBody) chartBody.appendChild(ticket);
+    ticket.classList.add("afx-trade-widget", "afx-trade-widget--collapsed");
   }
 
   function updateTicket(tick) {
@@ -913,6 +1055,7 @@
       syncChartPositions();
       updateBottomCounts();
       renderBottomPanel();
+      updatePositionsBtn();
     } catch (e) {
       console.error(e);
     }
@@ -1059,13 +1202,17 @@
     const mobile = window.matchMedia("(max-width: 960px)").matches;
     main.classList.toggle("trade-mobile", mobile);
     document.body.classList.toggle("trade-mt5-mode", mobile);
+    document.body.classList.toggle("trade-clean-mode", !mobile);
     const mt5 = document.getElementById("mt5-mobile");
     if (mt5) mt5.hidden = !mobile;
+    mountCleanTicket();
     if (mobile) {
       main.classList.add("watchlist-collapsed");
       syncMt5Chrome();
+      togglePositionsSheet(false);
     } else {
       closeMt5Sheet();
+      syncCleanTitle(activeSymbol);
       window.AlphaFXChartPositions?.deselectPosition?.();
     }
     window.AlphaFXChartPositions?.sync?.();
@@ -1346,6 +1493,7 @@
     window.AlphaFXQuotes.subscribe([symbol]);
     await loadChart(symbol);
     syncMt5Chrome();
+    syncCleanTitle(symbol);
   }
 
   async function loadSymbols() {
@@ -1471,6 +1619,7 @@
     bindWatchlistToggle();
     bindTradeActions();
     bindMobileMt5();
+    bindCleanTradeWidget();
     bindOrderTypeTabs();
     updateOrderTicketUI();
     loadTimeframePref();

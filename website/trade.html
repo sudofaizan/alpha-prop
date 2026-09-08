@@ -11,21 +11,25 @@
   <link rel="stylesheet" href="css/capiffy/3ac04c147fc81d91.css">
   <link rel="stylesheet" href="css/capiffy/3c6a7efccbedf43f.css">
   <link rel="stylesheet" href="css/fonts.css">
-  <link rel="stylesheet" href="css/trade-terminal.css?v=20260908h">
+  <link rel="stylesheet" href="css/trade-terminal.css?v=20260908j">
 </head>
 <body data-page="trade" data-title="Trade" data-no-wrap="true">
   <div id="app-root">
     <div class="trade-terminal">
-      <div class="trade-topbar">
+      <header class="trade-clean-head" id="trade-clean-head">
+        <h1 class="trade-clean-title" id="trade-clean-title">—</h1>
+        <div class="trade-clean-symbols" id="trade-clean-symbols"></div>
+        <div class="trade-clean-head-right">
+          <div class="trade-timeframes trade-timeframes--head" id="trade-timeframes" role="tablist" aria-label="Chart timeframe"></div>
+          <select id="trade-account-select" class="trade-clean-account" aria-label="Trading account"></select>
+          <span class="trade-clean-equity" id="trade-account-balance">—</span>
+          <span class="trade-clean-live"><span class="trade-status-dot" id="trade-live-dot"></span><span id="trade-live-label">Live</span></span>
+          <button type="button" class="trade-clean-positions-btn" id="trade-positions-btn">Positions</button>
+        </div>
+      </header>
+
+      <div class="trade-topbar" aria-hidden="true">
         <div class="trade-symbol-tabs" id="trade-symbol-tabs"></div>
-        <div class="trade-account-bar" id="trade-account-bar">
-          <select id="trade-account-select" class="trade-account-select" aria-label="Trading account"></select>
-          <span class="trade-account-balance" id="trade-account-balance">—</span>
-        </div>
-        <div class="trade-status">
-          <span class="trade-status-dot" id="trade-live-dot"></span>
-          <span id="trade-live-label">Connecting…</span>
-        </div>
       </div>
 
       <div class="trade-main" id="trade-main">
@@ -46,22 +50,27 @@
         </div>
 
         <section class="trade-chart-wrap">
-          <div class="trade-chart-toolbar">
-            <div class="trade-timeframes" id="trade-timeframes" role="tablist" aria-label="Chart timeframe"></div>
+          <div class="trade-chart-toolbar" aria-hidden="true">
+            <div class="trade-timeframes trade-timeframes--legacy" role="tablist" aria-hidden="true"></div>
           </div>
           <div class="trade-chart-body">
-            <div class="trade-chart-badge" id="trade-chart-badge">Loading…</div>
+            <div class="trade-chart-badge" id="trade-chart-badge" hidden>Loading…</div>
             <div id="trade-chart"></div>
             <div class="trade-pos-overlays" id="trade-pos-overlays" aria-hidden="true"></div>
           </div>
         </section>
 
-        <aside class="trade-ticket">
-          <div class="trade-ticket-tabs" id="trade-order-type-tabs">
-            <button type="button" class="active" data-type="market">Market</button>
-            <button type="button" data-type="limit">Limit</button>
-            <button type="button" data-type="stop">Stop</button>
+        <aside class="trade-ticket" id="trade-ticket">
+          <div class="afx-trade-header" id="afx-trade-header">
+            <span class="afx-trade-grip" aria-hidden="true">⋮⋮</span>
+            <div class="trade-ticket-tabs" id="trade-order-type-tabs">
+              <button type="button" class="active" data-type="market">Market</button>
+              <button type="button" data-type="limit">Limit</button>
+              <button type="button" data-type="stop">Stop</button>
+            </div>
+            <button type="button" class="afx-trade-collapse" id="afx-trade-collapse" aria-expanded="false" title="Expand panel">+</button>
           </div>
+          <div class="afx-trade-body" id="afx-trade-body" hidden>
           <div class="trade-field" id="trade-price-field" hidden>
             <label for="trade-price">Order price</label>
             <input id="trade-price" type="text" placeholder="Enter price">
@@ -82,17 +91,18 @@
             <button type="button" class="sell" id="trade-sell-btn" disabled>SELL<br><span class="sub" id="trade-sell-px">—</span></button>
             <button type="button" class="buy" id="trade-buy-btn" disabled>BUY<br><span class="sub" id="trade-buy-px">—</span></button>
           </div>
-          <div class="trade-metrics" id="trade-metrics">
+          <div class="trade-metrics" id="trade-metrics" hidden>
             <div class="trade-metric-row"><span>Equity</span><span id="trade-equity">—</span></div>
             <div class="trade-metric-row"><span>Balance</span><span id="trade-balance">—</span></div>
             <div class="trade-metric-row"><span>Free margin</span><span id="trade-free-margin">—</span></div>
             <div class="trade-metric-row"><span>Margin used</span><span id="trade-margin-used">—</span></div>
             <div class="trade-metric-row trade-metric-pnl"><span>Unrealised P/L</span><span id="trade-unrealised">—</span></div>
           </div>
+          </div>
         </aside>
       </div>
 
-      <div class="trade-bottom">
+      <div class="trade-bottom" id="trade-bottom">
         <div class="trade-bottom-tabs" id="trade-bottom-tabs">
           <button type="button" class="active" data-panel="open">Open <span class="trade-tab-count" id="trade-count-open">0</span></button>
           <button type="button" data-panel="pending">Pending <span class="trade-tab-count" id="trade-count-pending">0</span></button>
@@ -194,7 +204,7 @@
   <script src="js/ws-quotes.js"></script>
   <script src="js/trade-toast.js"></script>
   <script src="js/sim-pnl.js"></script>
-  <script src="js/chart-positions.js?v=20260908i"></script>
-  <script src="js/trade.js?v=20260908g"></script>
+  <script src="js/chart-positions.js?v=20260908j"></script>
+  <script src="js/trade.js?v=20260908j"></script>
 </body>
 </html>
