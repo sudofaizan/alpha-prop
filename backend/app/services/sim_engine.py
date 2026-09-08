@@ -225,6 +225,7 @@ def process_pending_fills(db: Session, account_id: int) -> list[dict]:
         fill_px = _round_price(trade.symbol, float(trade.entry_price))
         trade.entry_price = fill_px
         trade.status = "open"
+        trade.opened_at = _utcnow()
         db.add(trade)
         filled.append(
             {

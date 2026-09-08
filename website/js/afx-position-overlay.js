@@ -135,50 +135,71 @@
     return n > 1e12 ? Math.floor(n / 1000) : Math.floor(n);
   }
 
+  /** Reject values that look like prices/volumes mistaken for unix time. */
+  function isPlausibleUnixSec(sec) {
+    return sec != null && sec >= 1_000_000_000;
+  }
+
   function resolveBarTime(unixSec) {
     const sec = normalizeUnixSec(unixSec);
-    if (sec == null) return null;
+    if (sec == null || !isPlausibleUnixSec(sec)) return null;
 
     const bars = ctx().barBuffer || [];
     const step = ctx().tfStep?.(ctx().activeTimeframe) || 60;
+    const bucket = ctx().snapBarTime?.(sec) ?? null;
+    if (bucket == null) return null;
 
-    if (!bars.length) {
-      return ctx().snapBarTime?.(sec) ?? null;
-    }
+    if (!bars.length) return bucket;
 
     const first = bars[0].time;
     const last = bars[bars.length - 1].time;
+    if (bucket < first || bucket >= last + step) return null;
+    if (!bars.some((b) => b.time === bucket)) return null;
+    return bucket;
+  }
 
-    for (let i = bars.length - 1; i >= 0; i--) {
-      const b = bars[i];
-      if (sec >= b.time && sec < b.time + step) {
-        return b.time;
-      }
+  function resolvePositionUnixSec(position) {
+    const id = String(position.id ?? "");
+    const anchor = fillAnchors.get(id);
+    if (anchor?.unixSec != null) {
+      const sec = normalizeUnixSec(anchor.unixSec);
+      if (sec != null && isPlausibleUnixSec(sec)) return sec;
     }
-
-    // Outside loaded history — don't extrapolate to wrong candles
-    if (sec < first || sec >= last + step) {
-      return null;
+    if (position.opened_time != null) {
+      const sec = normalizeUnixSec(position.opened_time);
+      if (sec != null && isPlausibleUnixSec(sec)) return sec;
     }
+    if (position.time != null) {
+      const sec = normalizeUnixSec(position.time);
+      if (sec != null && isPlausibleUnixSec(sec)) return sec;
+    }
+    return null;
+  }
 
+  function resolveCloseUnixSec(marker) {
+    const anchor = closeAnchors.get(String(marker.id));
+    if (anchor?.unixSec != null) {
+      const sec = normalizeUnixSec(anchor.unixSec);
+      if (sec != null && isPlausibleUnixSec(sec)) return sec;
+    }
+    if (marker.unixTime != null) {
+      const sec = normalizeUnixSec(marker.unixTime);
+      if (sec != null && isPlausibleUnixSec(sec)) return sec;
+    }
     return null;
   }
 
   function resolvePositionTime(position) {
+    const sec = resolvePositionUnixSec(position);
+    if (sec != null) {
+      const t = resolveBarTime(sec);
+      if (t != null) return t;
+    }
     const id = String(position.id ?? "");
     const anchor = fillAnchors.get(id);
     if (anchor?.barTime != null) {
       const bars = ctx().barBuffer || [];
       if (bars.some((b) => b.time === anchor.barTime)) return anchor.barTime;
-    }
-
-    if (position.opened_time != null) {
-      const t = resolveBarTime(position.opened_time);
-      if (t != null) return t;
-    }
-    if (position.time != null) {
-      const t = resolveBarTime(position.time);
-      if (t != null) return t;
     }
     return ctx().fallbackTime?.() ?? null;
   }
@@ -200,25 +221,30 @@
     fillAnchors.delete(String(tradeId));
   }
 
-  function timeToLocalX(time) {
-    if (!chart || time == null) return null;
-    const bars = ctx().barBuffer || [];
-    const idx = bars.findIndex((b) => b.time === time);
-    if (idx < 0) return null;
+  function timeToLocalXForUnix(unixSec) {
+    if (!chart || unixSec == null) return null;
+    const sec = normalizeUnixSec(unixSec);
+    if (sec == null || !isPlausibleUnixSec(sec)) return null;
+    if (resolveBarTime(sec) == null) return null;
 
+    const frame = getPlotFrame();
     const ts = chart.timeScale();
+
     try {
-      const x = ts.logicalToCoordinate(idx);
-      if (x != null) return getPlotFrame().left + x;
+      const x = ts.timeToCoordinate(sec);
+      if (x != null && Number.isFinite(x)) return frame.left + x;
     } catch {
       /* fallback below */
     }
 
-    try {
-      const x = ts.timeToCoordinate(time);
-      if (x != null) return getPlotFrame().left + x;
-    } catch {
-      /* ignore */
+    const barTime = resolveBarTime(sec);
+    if (barTime != null) {
+      try {
+        const x = ts.timeToCoordinate(barTime);
+        if (x != null && Number.isFinite(x)) return frame.left + x;
+      } catch {
+        /* ignore */
+      }
     }
     return null;
   }
@@ -480,9 +506,9 @@
         continue;
       }
 
-      const x1 = timeToLocalX(markerBarTime(entry));
+      const x1 = timeToLocalXForUnix(entry.unixTime);
       const y1 = priceToLocalY(entry.price);
-      const x2 = timeToLocalX(closeMarkerBarTime(close));
+      const x2 = timeToLocalXForUnix(resolveCloseUnixSec(close));
       const y2 = priceToLocalY(close.price);
       if (x1 == null || y1 == null || x2 == null || y2 == null) {
         conn.line.style.visibility = "hidden";
@@ -513,30 +539,20 @@
     return null;
   }
 
-  function markerBarTime(marker) {
-    if (marker.unixTime != null) {
-      const t = resolveBarTime(marker.unixTime);
-      if (t != null) return t;
-    }
-    return marker.barTime ?? null;
-  }
-
-  function closeMarkerBarTime(marker) {
-    const anchor = closeAnchors.get(marker.id);
-    return resolveCloseBarTime(marker.unixTime, anchor);
-  }
-
-  function upsertClosedEntryMarker({ id, side, price, unixTime, symbol }) {
+  function upsertClosedEntryMarker({ id, side, price, unixTime, barTime, symbol }) {
     const tradeId = String(id);
-    if (price == null || unixTime == null) return;
+    const sec = normalizeUnixSec(unixTime);
+    if (price == null || sec == null || !isPlausibleUnixSec(sec)) return;
     const sym = symbol || ctx().activeSymbol;
+    const resolvedBar = barTime ?? resolveBarTime(sec);
     let marker = closedEntryMarkers.get(tradeId);
     if (!marker) {
       marker = {
         id: tradeId,
         side: String(side).toLowerCase(),
         price: Number(price),
-        unixTime: Number(unixTime),
+        unixTime: sec,
+        barTime: resolvedBar,
         symbol: sym,
         el: createEntryMarker(side),
       };
@@ -544,7 +560,8 @@
     } else {
       marker.side = String(side).toLowerCase();
       marker.price = Number(price);
-      marker.unixTime = Number(unixTime);
+      marker.unixTime = sec;
+      marker.barTime = resolvedBar;
       marker.symbol = sym;
       marker.el.className = `afx-entry-marker afx-entry-marker--${marker.side}`;
     }
@@ -554,17 +571,18 @@
 
   function upsertCloseMarker({ id, side, price, barTime, unixTime, symbol }) {
     const tradeId = String(id);
-    const time = unixTime ?? null;
-    if (price == null || (time == null && barTime == null)) return;
+    const sec = normalizeUnixSec(unixTime);
+    if (price == null || sec == null || !isPlausibleUnixSec(sec)) return;
     const sym = symbol || ctx().activeSymbol;
+    const resolvedBar = barTime ?? resolveBarTime(sec);
     let marker = closeMarkers.get(tradeId);
     if (!marker) {
       marker = {
         id: tradeId,
         side: String(side).toLowerCase(),
         price: Number(price),
-        unixTime: time != null ? Number(time) : null,
-        barTime: barTime ?? null,
+        unixTime: sec,
+        barTime: resolvedBar,
         symbol: sym,
         el: createCloseMarker(side),
       };
@@ -572,8 +590,8 @@
     } else {
       marker.side = String(side).toLowerCase();
       marker.price = Number(price);
-      if (time != null) marker.unixTime = Number(time);
-      if (barTime != null) marker.barTime = barTime;
+      marker.unixTime = sec;
+      marker.barTime = resolvedBar;
       marker.symbol = sym;
       marker.el.className = `afx-close-marker afx-close-marker--from-${marker.side}`;
       marker.el.title = marker.side === "buy" ? "Buy closed" : "Sell closed";
@@ -604,11 +622,14 @@
     const tradeId = String(id);
     if (closedEntryMarkers.has(tradeId)) return;
     const side = String(view.position.side).toLowerCase();
+    const unixSec = resolvePositionUnixSec(view.position) ?? nowSec();
+    if (!isPlausibleUnixSec(unixSec) || resolveBarTime(unixSec) == null) return;
     closedEntryMarkers.set(tradeId, {
       id: tradeId,
       side,
       price: Number(view.position.price),
-      unixTime: view.position.opened_time ?? nowSec(),
+      unixTime: unixSec,
+      barTime: resolveBarTime(unixSec),
       symbol: view.position.symbol || ctx().activeSymbol,
       el: view.entryMarker,
     });
@@ -624,7 +645,7 @@
         marker.el.style.visibility = "hidden";
         continue;
       }
-      const x = timeToLocalX(markerBarTime(marker));
+      const x = timeToLocalXForUnix(marker.unixTime);
       const y = priceToLocalY(marker.price);
       if (x == null || y == null) {
         marker.el.style.visibility = "hidden";
@@ -692,7 +713,9 @@
       const openedTime = trade.opened_time ?? null;
       const closedTime = trade.closed_time ?? null;
       if (entry == null || exit == null || openedTime == null || closedTime == null) continue;
-      if (resolveBarTime(openedTime) == null || resolveBarTime(closedTime) == null) continue;
+      const entryBar = resolveBarTime(openedTime);
+      const closeBar = resolveBarTime(closedTime);
+      if (entryBar == null || closeBar == null) continue;
 
       historyIds.add(id);
       upsertClosedEntryMarker({
@@ -700,6 +723,7 @@
         side,
         price: entry,
         unixTime: openedTime,
+        barTime: entryBar,
         symbol: sym,
       });
       upsertCloseMarker({
@@ -707,6 +731,7 @@
         side,
         price: exit,
         unixTime: closedTime,
+        barTime: closeBar,
         symbol: sym,
       });
     }
@@ -737,7 +762,7 @@
         marker.el.style.visibility = "hidden";
         continue;
       }
-      const x = timeToLocalX(closeMarkerBarTime(marker));
+      const x = timeToLocalXForUnix(resolveCloseUnixSec(marker));
       const y = priceToLocalY(marker.price);
       if (x == null || y == null) {
         marker.el.style.visibility = "hidden";
@@ -789,7 +814,7 @@
     if (!selected || activeFocus == null) return;
     const frame = getPlotFrame();
     const sym = view.position.symbol;
-    const anchorX = timeToLocalX(resolvePositionTime(view.position));
+    const anchorX = timeToLocalXForUnix(resolvePositionUnixSec(view.position));
     if (activeFocus === "entry") {
       showPriceTag(view.entryPriceTag, view.position.price, frame, "entry", sym, anchorX);
       return;
@@ -907,7 +932,7 @@
       return;
     }
 
-    const entryX = timeToLocalX(resolvePositionTime(view.position));
+    const entryX = timeToLocalXForUnix(resolvePositionUnixSec(view.position));
     if (entryX == null) {
       hideLevel(flag, close);
       return;
@@ -1498,7 +1523,7 @@
     const frame = getPlotFrame();
     for (const view of views.values()) {
       const entryY = priceToLocalY(view.position.price);
-      const entryX = timeToLocalX(resolvePositionTime(view.position));
+      const entryX = timeToLocalXForUnix(resolvePositionUnixSec(view.position));
       const entryInFrame =
         entryY != null &&
         entryX != null &&

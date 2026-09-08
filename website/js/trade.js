@@ -1745,6 +1745,7 @@
       applyChartSize(container);
       updateChartBadge(symbol);
       syncChartPositions();
+      window.AlphaFXPositionOverlay?.reposition?.();
     } catch (e) {
       console.error("loadChart failed:", e);
     } finally {
