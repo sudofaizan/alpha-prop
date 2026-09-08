@@ -245,6 +245,10 @@
     for (const [id, view] of views) updatePriceTags(view, id);
   }
 
+  function chartCenterX(frame) {
+    return frame.left + frame.width / 2;
+  }
+
   function showPriceTag(tag, price, frame, kind, symbol) {
     const y = priceToLocalY(price);
     if (y == null || y < frame.top || y > frame.top + frame.height) {
@@ -254,7 +258,8 @@
     const prefix = kind === "sl" ? "SL" : kind === "tp" ? "TP" : "";
     tag.textContent = prefix ? `${prefix} ${fmtPrice(price, symbol)}` : fmtPrice(price, symbol);
     tag.style.top = `${y}px`;
-    tag.style.left = `${frame.left + 6}px`;
+    tag.style.left = `${chartCenterX(frame)}px`;
+    tag.style.transform = "translate(-50%, -50%)";
     tag.hidden = false;
   }
 
@@ -309,19 +314,25 @@
       hideLevel(flag, close);
       return;
     }
-    const labelRight = view.row.offsetLeft + view.row.offsetWidth;
-    const baseLeft = labelRight + 8 + slot * 44;
+    const centerX = chartCenterX(frame);
+    const atEntry = Math.abs(price - view.position.price) < 1e-8;
+    let baseLeft = centerX;
+    if (!isSet && atEntry) {
+      baseLeft = kind === "sl" ? centerX - 52 : centerX + 52;
+    }
+    const viewId = view.row.dataset.positionId ?? "";
+    const focused = viewId === activeId && activeFocus === kind;
     flag.style.visibility = "visible";
     flag.style.top = `${y}px`;
     flag.style.left = `${baseLeft}px`;
-    const viewId = view.row.dataset.positionId ?? "";
-    const focused = viewId === activeId && activeFocus === kind;
-    flag.style.transform = focused ? "translateY(-50%) scale(1.12)" : "translateY(-50%)";
+    flag.style.transform = focused
+      ? "translate(-50%, -50%) scale(1.12)"
+      : "translate(-50%, -50%)";
     if (isSet || dragging) {
       close.style.visibility = "visible";
       close.style.top = `${y}px`;
-      close.style.left = `${baseLeft + 22}px`;
-      close.style.transform = "translateY(-50%)";
+      close.style.left = `${baseLeft + (kind === "sl" ? 20 : -20)}px`;
+      close.style.transform = "translate(-50%, -50%)";
     } else {
       close.style.visibility = "hidden";
     }
@@ -778,8 +789,8 @@
       view.row.style.visibility = "visible";
       view.row.style.display = "flex";
       view.row.style.top = `${entryY}px`;
-      view.row.style.left = `${frame.left + 12}px`;
-      view.row.style.transform = "translateY(-50%)";
+      view.row.style.left = `${chartCenterX(frame)}px`;
+      view.row.style.transform = "translate(-50%, -50%)";
       view.positionClose.style.visibility = "visible";
       if (view.confirmBtn) view.confirmBtn.style.visibility = "visible";
 

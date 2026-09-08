@@ -2011,6 +2011,7 @@ body[data-page="trade"].trade-clean-mode #trade-metrics {
   pointer-events: auto;
   cursor: pointer;
   touch-action: manipulation;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
 }
 
 .afx-position-label--focused {
@@ -2160,7 +2161,6 @@ body[data-page="trade"].trade-clean-mode #trade-metrics {
 
 .afx-price-tag {
   position: absolute;
-  transform: translateY(-50%);
   padding: 3px 7px;
   border-radius: 4px;
   font-size: 11px;
