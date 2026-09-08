@@ -46,11 +46,31 @@
     return fn ? fn(symbol || ctx().activeSymbol, value) : Number(value).toFixed(2);
   }
 
-  function validateSlTp(side, entry, kind, price) {
+  function getActiveMarkPrice(side, symbol) {
+    const sym = symbol || ctx().activeSymbol;
+    const tick = window.AlphaFXQuotes?.getLast?.(sym);
+    if (tick && window.AlphaFXSimPnl?.markPrice) {
+      const px = window.AlphaFXSimPnl.markPrice(tick, side);
+      if (px != null && Number.isFinite(Number(px))) return Number(px);
+    }
+    const mid = getMarketPrice();
+    return mid != null && Number.isFinite(Number(mid)) ? Number(mid) : null;
+  }
+
+  function validateSlTp(side, entry, kind, price, { status } = {}) {
     const s = String(side).toLowerCase();
     if (kind === "sl") {
-      if (s === "sell" && price <= entry) return "SL must be above sell price";
-      if (s === "buy" && price >= entry) return "SL must be below buy price";
+      const isOpen = status === "open";
+      const refPx = isOpen ? getActiveMarkPrice(side) : Number(entry);
+      if (isOpen && (refPx == null || !Number.isFinite(refPx))) {
+        return "Waiting for live price";
+      }
+      if (s === "sell" && price <= refPx) {
+        return isOpen ? "SL must be above current price" : "SL must be above sell price";
+      }
+      if (s === "buy" && price >= refPx) {
+        return isOpen ? "SL must be below current price" : "SL must be below buy price";
+      }
       return null;
     }
     if (s === "sell" && price >= entry) return "TP must be below sell price";
@@ -1433,7 +1453,7 @@
         originalPrice;
       const previousSl = view.position.sl;
       const previousTp = view.position.tp;
-      const error = validateSlTp(side, view.position.price, kind, price);
+      const error = validateSlTp(side, view.position.price, kind, price, { status: view.position.status });
 
       if (error) {
         view.drag = null;

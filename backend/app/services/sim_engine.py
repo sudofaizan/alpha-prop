@@ -103,14 +103,33 @@ def _reserved_margin(db: Session, account_id: int) -> float:
     return sum(float(t.margin_used or 0) for t in trades)
 
 
-def _validate_stops(side: str, entry: float, symbol: str, stop_loss: float | None, take_profit: float | None) -> None:
+def _validate_stops(
+    side: str,
+    entry: float,
+    symbol: str,
+    stop_loss: float | None,
+    take_profit: float | None,
+    *,
+    sl_reference: float | None = None,
+) -> None:
     side = side.upper()
+    sl_ref = float(sl_reference) if sl_reference is not None else float(entry)
     if stop_loss is not None:
         sl = float(stop_loss)
-        if side == "BUY" and sl >= entry:
-            raise HTTPException(status_code=400, detail="Stop loss for BUY must be below entry")
-        if side == "SELL" and sl <= entry:
-            raise HTTPException(status_code=400, detail="Stop loss for SELL must be above entry")
+        if side == "BUY" and sl >= sl_ref:
+            detail = (
+                "Stop loss for BUY must be below current price"
+                if sl_reference is not None
+                else "Stop loss for BUY must be below entry"
+            )
+            raise HTTPException(status_code=400, detail=detail)
+        if side == "SELL" and sl <= sl_ref:
+            detail = (
+                "Stop loss for SELL must be above current price"
+                if sl_reference is not None
+                else "Stop loss for SELL must be above entry"
+            )
+            raise HTTPException(status_code=400, detail=detail)
     if take_profit is not None:
         tp = float(take_profit)
         if side == "BUY" and tp <= entry:
@@ -670,10 +689,8 @@ def update_position_stops(
     if set_stop_loss:
         if stop_loss is not None:
             sl = float(stop_loss)
-            if side == "BUY" and sl >= entry:
-                raise HTTPException(status_code=400, detail="Stop loss for BUY must be below entry")
-            if side == "SELL" and sl <= entry:
-                raise HTTPException(status_code=400, detail="Stop loss for SELL must be above entry")
+            mark = _exit_price(trade.symbol, trade.side)
+            _validate_stops(side, entry, trade.symbol, sl, None, sl_reference=mark)
             trade.stop_loss = _round_price(trade.symbol, sl)
         else:
             trade.stop_loss = None
