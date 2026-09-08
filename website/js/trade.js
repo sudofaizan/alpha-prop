@@ -292,9 +292,10 @@
     if (String(draft.orderKind || "").toLowerCase() === "market") window.playOrderFilledSound?.();
     const fillSec = Math.floor(Date.now() / 1000);
     const barTime =
-      barBuffer.length > 0
+      window.AlphaFXPositionOverlay?.barTimeForSec?.(fillSec) ??
+      (barBuffer.length > 0
         ? barBuffer[barBuffer.length - 1].time
-        : barBucket(fillSec * 1000, activeTimeframe);
+        : barBucket(fillSec * 1000, activeTimeframe));
     if (res.trade_id != null) {
       window.AlphaFXPositionOverlay?.setFillAnchor?.(res.trade_id, { unixSec: fillSec, barTime });
     }
@@ -1082,9 +1083,10 @@
       });
       const fillSec = Math.floor(Date.now() / 1000);
       const barTime =
-        barBuffer.length > 0
+        window.AlphaFXPositionOverlay?.barTimeForSec?.(fillSec) ??
+        (barBuffer.length > 0
           ? barBuffer[barBuffer.length - 1].time
-          : barBucket(fillSec * 1000, activeTimeframe);
+          : barBucket(fillSec * 1000, activeTimeframe));
       if (res.trade_id != null) {
         window.AlphaFXPositionOverlay?.setFillAnchor?.(res.trade_id, {
           unixSec: fillSec,
@@ -1132,9 +1134,10 @@
     if (exit == null || !Number.isFinite(exit)) return;
     const fillSec = Math.floor(Date.now() / 1000);
     const barTime =
-      barBuffer.length > 0
+      window.AlphaFXPositionOverlay?.barTimeForSec?.(fillSec) ??
+      (barBuffer.length > 0
         ? barBuffer[barBuffer.length - 1].time
-        : barBucket(fillSec * 1000, activeTimeframe);
+        : barBucket(fillSec * 1000, activeTimeframe));
     window.AlphaFXPositionOverlay?.setCloseAnchor?.(tradeId, {
       side: pos.side,
       exit,

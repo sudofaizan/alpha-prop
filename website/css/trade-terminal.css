@@ -312,6 +312,11 @@
   width: 100%;
   height: 100%;
   cursor: crosshair;
+  overflow: visible;
+}
+
+#trade-chart .afx-position-layer {
+  z-index: 15;
 }
 
 /* Capify-exact open trade overlays (entry pill + SL/TP tags) */
