@@ -19,6 +19,7 @@
   let draftCounter = 1;
   let repositionScheduled = false;
   let rangeSubscribed = false;
+  let dragListenersBound = false;
   /** @type {Map<string, { unixSec: number, barTime: number }>} */
   const fillAnchors = new Map();
   /** @type {Map<string, { side: string, exit: number, unixSec: number, barTime: number, symbol: string }>} */
@@ -224,10 +225,19 @@
   }
 
   function clientYToPrice(clientY) {
-    const frame = getPlotFrame();
-    const containerRect = mountEl.getBoundingClientRect();
-    const paneY = clientY - containerRect.top - frame.top;
-    return series?.coordinateToPrice(paneY);
+    if (!series || !chartEl) return null;
+    const chartRect = chartEl.getBoundingClientRect();
+    const paneY = clientY - chartRect.top;
+    const price = series.coordinateToPrice(paneY);
+    return price ?? null;
+  }
+
+  function ensureDragListeners() {
+    if (dragListenersBound) return;
+    dragListenersBound = true;
+    document.addEventListener("pointermove", onPointerMove, true);
+    document.addEventListener("pointerup", onPointerUp, true);
+    document.addEventListener("pointercancel", onPointerUp, true);
   }
 
   function removeLine(line) {
@@ -986,7 +996,12 @@
     event.preventDefault();
     event.stopPropagation();
     chart?.applyOptions({ handleScroll: false, handleScale: false });
-    event.currentTarget.setPointerCapture(event.pointerId);
+    ensureDragListeners();
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      /* ignore — document listeners handle move/up */
+    }
 
     if (kind === "entry") {
       view.drag = { kind, pointerId: event.pointerId, previewLine: null, originalPrice: view.position.price };
@@ -1131,7 +1146,7 @@
     const target = event.target;
     if (
       target.closest(
-        ".afx-position-label, .afx-entry-marker, .afx-position-flag, .afx-position-close, .afx-position-confirm, .afx-position-row, .afx-price-tag, .afx-trade-widget, .trade-ticket",
+        ".afx-position-label, .afx-entry-marker, .afx-position-flag, .afx-position-close, .afx-position-confirm, .afx-position-row, .afx-order-grip, .afx-price-tag, .afx-trade-widget, .trade-ticket",
       )
     ) {
       return;
@@ -1595,10 +1610,8 @@
     if (!layer) {
       layer = document.createElement("div");
       layer.className = "afx-position-layer";
-      layer.addEventListener("pointermove", onPointerMove);
-      layer.addEventListener("pointerup", onPointerUp);
-      layer.addEventListener("pointercancel", onPointerUp);
     }
+    ensureDragListeners();
 
     const host =
       mountEl.querySelector("#trade-pos-overlays")?.parentElement || mountEl;

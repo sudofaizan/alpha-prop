@@ -1797,6 +1797,14 @@ body[data-page="trade"].trade-clean-mode .trade-chart-body {
   background: #0b0e11;
 }
 
+body[data-page="trade"].trade-clean-mode #trade-chart {
+  z-index: 1;
+}
+
+body[data-page="trade"].trade-clean-mode .afx-position-layer {
+  z-index: 15;
+}
+
 body[data-page="trade"].trade-clean-mode .trade-ticket {
   position: absolute;
   left: 12px;
@@ -2007,6 +2015,21 @@ body[data-page="trade"].trade-clean-mode #trade-metrics {
   backdrop-filter: blur(4px);
 }
 
+.afx-position-row--draft {
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+
+.afx-position-row--draft:active {
+  cursor: grabbing;
+}
+
+.afx-position-row--draft .afx-pos-pnl,
+.afx-position-row--draft .afx-pos-vol {
+  pointer-events: none;
+}
+
 .afx-order-grip {
   appearance: none;
   border: none;
@@ -2015,7 +2038,7 @@ body[data-page="trade"].trade-clean-mode #trade-metrics {
   margin: 0;
   width: 14px;
   height: 18px;
-  cursor: grab;
+  cursor: inherit;
   pointer-events: auto;
   touch-action: none;
   flex-shrink: 0;
