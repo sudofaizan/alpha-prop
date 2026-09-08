@@ -27,6 +27,9 @@
   const closeMarkers = new Map();
   /** @type {Map<string, { id: string, side: string, price: number, barTime: number, symbol: string, el: HTMLElement }>} */
   const closedEntryMarkers = new Map();
+  /** @type {Map<string, { line: SVGLineElement, side: string }>} */
+  const tradeConnectors = new Map();
+  let connectorSvg = null;
   const trackedCloseIds = new Set();
 
   function ctx() {
@@ -402,6 +405,96 @@
     return side === "buy" ? "translate(-50%, -100%)" : "translate(-50%, 0)";
   }
 
+  function ensureConnectorSvg() {
+    if (connectorSvg) return connectorSvg;
+    connectorSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    connectorSvg.classList.add("afx-trade-connectors");
+    connectorSvg.setAttribute("aria-hidden", "true");
+    layer.insertBefore(connectorSvg, layer.firstChild);
+    return connectorSvg;
+  }
+
+  function connectorStroke(side) {
+    return String(side).toLowerCase() === "buy" ? "#0ecb81" : "#f6465d";
+  }
+
+  function ensureTradeConnector(tradeId) {
+    const id = String(tradeId);
+    const entry = closedEntryMarkers.get(id);
+    const close = closeMarkers.get(id);
+    if (!entry || !close) return;
+
+    let conn = tradeConnectors.get(id);
+    if (!conn) {
+      const svg = ensureConnectorSvg();
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.classList.add("afx-trade-connector");
+      line.dataset.tradeId = id;
+      svg.appendChild(line);
+      conn = { line, side: entry.side };
+      tradeConnectors.set(id, conn);
+    } else {
+      conn.side = entry.side;
+    }
+    conn.line.setAttribute("stroke", connectorStroke(entry.side));
+    scheduleReposition();
+  }
+
+  function removeTradeConnector(tradeId) {
+    const id = String(tradeId);
+    const conn = tradeConnectors.get(id);
+    if (!conn) return;
+    conn.line.remove();
+    tradeConnectors.delete(id);
+    if (connectorSvg && !connectorSvg.childElementCount) {
+      connectorSvg.remove();
+      connectorSvg = null;
+    }
+  }
+
+  function markerPointVisible(x, y, frame) {
+    return (
+      x != null &&
+      y != null &&
+      y >= frame.top &&
+      y <= frame.top + frame.height &&
+      x >= frame.left &&
+      x <= frame.left + frame.width
+    );
+  }
+
+  function repositionTradeConnectors() {
+    if (!connectorSvg) return;
+    const frame = getPlotFrame();
+    const sym = ctx().activeSymbol;
+    for (const [tradeId, conn] of tradeConnectors) {
+      const entry = closedEntryMarkers.get(tradeId);
+      const close = closeMarkers.get(tradeId);
+      if (!entry || !close || entry.symbol !== sym || close.symbol !== sym) {
+        conn.line.style.visibility = "hidden";
+        continue;
+      }
+
+      const x1 = timeToLocalX(entry.barTime);
+      const y1 = priceToLocalY(entry.price);
+      const x2 = timeToLocalX(close.barTime);
+      const y2 = priceToLocalY(close.price);
+      const entryVisible = markerPointVisible(x1, y1, frame);
+      const closeVisible = markerPointVisible(x2, y2, frame);
+      if (!entryVisible && !closeVisible) {
+        conn.line.style.visibility = "hidden";
+        continue;
+      }
+
+      conn.line.setAttribute("x1", String(x1));
+      conn.line.setAttribute("y1", String(y1));
+      conn.line.setAttribute("x2", String(x2));
+      conn.line.setAttribute("y2", String(y2));
+      conn.line.setAttribute("stroke", connectorStroke(entry.side));
+      conn.line.style.visibility = "visible";
+    }
+  }
+
   function resolveCloseBarTime(closedTime, anchor) {
     if (anchor?.barTime != null) return anchor.barTime;
     if (closedTime != null) return resolveBarTime(closedTime);
@@ -432,6 +525,7 @@
       marker.el.title = marker.side === "buy" ? "Buy closed" : "Sell closed";
     }
     trackedCloseIds.add(tradeId);
+    ensureTradeConnector(tradeId);
     scheduleReposition();
   }
 
@@ -440,6 +534,7 @@
     if (!marker) return;
     marker.el.remove();
     closeMarkers.delete(String(id));
+    removeTradeConnector(id);
   }
 
   function removeClosedEntryMarker(id) {
@@ -447,6 +542,7 @@
     if (!marker) return;
     marker.el.remove();
     closedEntryMarkers.delete(String(id));
+    removeTradeConnector(id);
   }
 
   function persistClosedEntryMarker(id, view) {
@@ -463,6 +559,7 @@
       el: view.entryMarker,
     });
     view.entryMarker = null;
+    ensureTradeConnector(tradeId);
   }
 
   function repositionClosedEntryMarkers() {
@@ -1163,6 +1260,7 @@
     }
     repositionCloseMarkers();
     repositionClosedEntryMarkers();
+    repositionTradeConnectors();
   }
 
   function positionTime(pos) {
@@ -1291,6 +1389,11 @@
     closeAnchors.clear();
     for (const id of [...closeMarkers.keys()]) removeCloseMarker(id);
     for (const id of [...closedEntryMarkers.keys()]) removeClosedEntryMarker(id);
+    for (const id of [...tradeConnectors.keys()]) removeTradeConnector(id);
+    if (connectorSvg) {
+      connectorSvg.remove();
+      connectorSvg = null;
+    }
     trackedCloseIds.clear();
   }
 
