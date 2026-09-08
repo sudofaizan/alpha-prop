@@ -1047,14 +1047,16 @@
     flag.style.transform = focused ? "translateY(-50%) scale(1.12)" : "translateY(-50%)";
 
     if (isSet || dragging) {
+      close.hidden = false;
       close.style.visibility = "visible";
       close.style.position = "absolute";
       close.style.top = `${y}px`;
-      close.style.left = `${baseLeft + 22}px`;
-      close.style.zIndex = "16";
+      close.style.left = `${baseLeft - 20}px`;
+      close.style.zIndex = "17";
       close.style.transform = "translateY(-50%)";
     } else {
       close.style.visibility = "hidden";
+      close.hidden = true;
     }
   }
 
@@ -1383,7 +1385,17 @@
 
   function clearSl(id) {
     const view = views.get(id);
-    if (!view || view.position.sl == null) return;
+    if (!view) return;
+    if (view.drag?.kind === "sl") {
+      const preview = view.drag.previewLine;
+      view.drag = null;
+      if (preview) removeLine(preview);
+      applyLineStyles();
+      updatePnlDisplay(view);
+      scheduleReposition();
+      return;
+    }
+    if (view.position.sl == null) return;
     clearLevelLine(view, "sl");
     view.position.sl = null;
     if (!isDraftId(id)) {
@@ -1575,6 +1587,8 @@
       e.stopPropagation();
       clearTp(position.id);
     });
+    slClose.addEventListener("pointerdown", (e) => e.stopPropagation());
+    tpClose.addEventListener("pointerdown", (e) => e.stopPropagation());
 
     const entryPriceTag = createPriceTag("entry");
     const slPriceTag = createPriceTag("sl");

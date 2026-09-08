@@ -2233,6 +2233,25 @@ body[data-page="trade"].trade-clean-mode #trade-metrics {
   flex-shrink: 0;
 }
 
+.afx-position-close.afx-stop-close {
+  position: absolute;
+  z-index: 17;
+  font-size: 14px;
+  font-weight: 600;
+  width: 18px;
+  height: 18px;
+  color: #848e9c;
+  background: rgba(11, 14, 17, 0.72);
+  border-radius: 4px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.afx-position-close.afx-stop-close:hover {
+  color: #f6465d;
+  background: rgba(246, 70, 93, 0.12);
+}
+
 .afx-position-row .afx-stop-close {
   font-size: 13px;
   width: 14px;
