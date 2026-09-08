@@ -475,9 +475,9 @@
         continue;
       }
 
-      const x1 = timeToLocalX(entry.barTime);
+      const x1 = timeToLocalX(markerBarTime(entry));
       const y1 = priceToLocalY(entry.price);
-      const x2 = timeToLocalX(close.barTime);
+      const x2 = timeToLocalX(closeMarkerBarTime(close));
       const y2 = priceToLocalY(close.price);
       const entryVisible = markerPointVisible(x1, y1, frame);
       const closeVisible = markerPointVisible(x2, y2, frame);
@@ -501,9 +501,46 @@
     return ctx().fallbackTime?.() ?? null;
   }
 
-  function upsertCloseMarker({ id, side, price, barTime, symbol }) {
+  function markerBarTime(marker) {
+    if (marker.unixTime != null) return resolveBarTime(marker.unixTime);
+    return marker.barTime ?? null;
+  }
+
+  function closeMarkerBarTime(marker) {
+    const anchor = closeAnchors.get(marker.id);
+    return resolveCloseBarTime(marker.unixTime, anchor);
+  }
+
+  function upsertClosedEntryMarker({ id, side, price, unixTime, symbol }) {
     const tradeId = String(id);
-    if (price == null || barTime == null) return;
+    if (price == null || unixTime == null) return;
+    const sym = symbol || ctx().activeSymbol;
+    let marker = closedEntryMarkers.get(tradeId);
+    if (!marker) {
+      marker = {
+        id: tradeId,
+        side: String(side).toLowerCase(),
+        price: Number(price),
+        unixTime: Number(unixTime),
+        symbol: sym,
+        el: createEntryMarker(side),
+      };
+      closedEntryMarkers.set(tradeId, marker);
+    } else {
+      marker.side = String(side).toLowerCase();
+      marker.price = Number(price);
+      marker.unixTime = Number(unixTime);
+      marker.symbol = sym;
+      marker.el.className = `afx-entry-marker afx-entry-marker--${marker.side}`;
+    }
+    trackedCloseIds.add(tradeId);
+    ensureTradeConnector(tradeId);
+  }
+
+  function upsertCloseMarker({ id, side, price, barTime, unixTime, symbol }) {
+    const tradeId = String(id);
+    const time = unixTime ?? null;
+    if (price == null || (time == null && barTime == null)) return;
     const sym = symbol || ctx().activeSymbol;
     let marker = closeMarkers.get(tradeId);
     if (!marker) {
@@ -511,7 +548,8 @@
         id: tradeId,
         side: String(side).toLowerCase(),
         price: Number(price),
-        barTime,
+        unixTime: time != null ? Number(time) : null,
+        barTime: barTime ?? null,
         symbol: sym,
         el: createCloseMarker(side),
       };
@@ -519,7 +557,8 @@
     } else {
       marker.side = String(side).toLowerCase();
       marker.price = Number(price);
-      marker.barTime = barTime;
+      if (time != null) marker.unixTime = Number(time);
+      if (barTime != null) marker.barTime = barTime;
       marker.symbol = sym;
       marker.el.className = `afx-close-marker afx-close-marker--from-${marker.side}`;
       marker.el.title = marker.side === "buy" ? "Buy closed" : "Sell closed";
@@ -554,7 +593,7 @@
       id: tradeId,
       side,
       price: Number(view.position.price),
-      barTime: resolvePositionTime(view.position),
+      unixTime: view.position.opened_time ?? nowSec(),
       symbol: view.position.symbol || ctx().activeSymbol,
       el: view.entryMarker,
     });
@@ -570,7 +609,7 @@
         marker.el.style.visibility = "hidden";
         continue;
       }
-      const x = timeToLocalX(marker.barTime);
+      const x = timeToLocalX(markerBarTime(marker));
       const y = priceToLocalY(marker.price);
       if (
         x == null ||
@@ -612,14 +651,56 @@
       return;
     }
 
-    const barTime = resolveCloseBarTime(closedTime, anchor);
     upsertCloseMarker({
       id: tradeId,
       side,
       price: exit,
-      barTime,
+      unixTime: closedTime,
+      barTime: resolveCloseBarTime(closedTime, anchor),
       symbol: markerSymbol || sym,
     });
+  }
+
+  function syncClosedHistory() {
+    if (!layer) return;
+    const sym = ctx().activeSymbol;
+    const historyIds = new Set();
+
+    for (const trade of ctx().closed || []) {
+      if (trade.symbol !== sym) continue;
+      const id = String(trade.id);
+      const side = String(trade.side).toLowerCase();
+      const entry = trade.entry != null && trade.entry !== "" ? Number(trade.entry) : null;
+      const exit = trade.exit != null && trade.exit !== "" ? Number(trade.exit) : null;
+      const openedTime = trade.opened_time ?? null;
+      const closedTime = trade.closed_time ?? null;
+      if (entry == null || exit == null || openedTime == null || closedTime == null) continue;
+
+      historyIds.add(id);
+      upsertClosedEntryMarker({
+        id,
+        side,
+        price: entry,
+        unixTime: openedTime,
+        symbol: sym,
+      });
+      upsertCloseMarker({
+        id,
+        side,
+        price: exit,
+        unixTime: closedTime,
+        symbol: sym,
+      });
+    }
+
+    for (const id of [...closedEntryMarkers.keys()]) {
+      const marker = closedEntryMarkers.get(id);
+      if (marker?.symbol === sym && !historyIds.has(id)) removeClosedEntryMarker(id);
+    }
+    for (const id of [...closeMarkers.keys()]) {
+      const marker = closeMarkers.get(id);
+      if (marker?.symbol === sym && !historyIds.has(id)) removeCloseMarker(id);
+    }
   }
 
   function syncCloseMarkers() {
@@ -638,7 +719,7 @@
         marker.el.style.visibility = "hidden";
         continue;
       }
-      const x = timeToLocalX(marker.barTime);
+      const x = timeToLocalX(closeMarkerBarTime(marker));
       const y = priceToLocalY(marker.price);
       if (
         x == null ||
@@ -1419,6 +1500,7 @@
       if (!serverIds.has(id)) removeView(id);
     }
     syncCloseMarkers();
+    syncClosedHistory();
     scheduleReposition();
   }
 
