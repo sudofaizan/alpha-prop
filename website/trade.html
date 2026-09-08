@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="css/capiffy/3ac04c147fc81d91.css">
   <link rel="stylesheet" href="css/capiffy/3c6a7efccbedf43f.css">
   <link rel="stylesheet" href="css/fonts.css">
-  <link rel="stylesheet" href="css/trade-terminal.css?v=20260908y">
+  <link rel="stylesheet" href="css/trade-terminal.css?v=20260909l">
 </head>
 <body data-page="trade" data-title="Trade" data-no-wrap="true">
   <div id="app-root">
@@ -20,6 +20,8 @@
         <h1 class="trade-clean-title" id="trade-clean-title">—</h1>
         <div class="trade-clean-symbols" id="trade-clean-symbols"></div>
         <div class="trade-clean-head-right">
+          <select id="trade-chart-symbol" class="trade-chart-symbol-select" aria-label="Chart symbol"></select>
+          <button type="button" class="trade-history-toggle" id="trade-history-toggle" aria-pressed="true">Hide history</button>
           <div class="trade-timeframes trade-timeframes--head" id="trade-timeframes" role="tablist" aria-label="Chart timeframe"></div>
           <select id="trade-account-select" class="trade-clean-account" aria-label="Trading account"></select>
           <span class="trade-clean-equity" id="trade-account-balance">—</span>
@@ -206,8 +208,8 @@
   <script src="js/trade-sounds.js?v=20260909c"></script>
   <script src="js/sim-pnl.js"></script>
   <script src="js/time.js?v=20260909j"></script>
-  <script src="js/afx-position-overlay.js?v=20260909j"></script>
+  <script src="js/afx-position-overlay.js?v=20260909l"></script>
   <script src="js/chart-positions.js?v=20260909a"></script>
-  <script src="js/trade.js?v=20260909j"></script>
+  <script src="js/trade.js?v=20260909m"></script>
 </body>
 </html>

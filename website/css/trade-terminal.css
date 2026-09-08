@@ -1705,12 +1705,66 @@ body[data-page="trade"]:not(.trade-clean-mode) .trade-clean-head {
   min-width: 0;
 }
 
+.trade-chart-symbol-select {
+  appearance: none;
+  background: #1e2329 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23848e9c' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 8px center;
+  border: 1px solid #2b3139;
+  color: #eaecef;
+  border-radius: 6px;
+  padding: 5px 28px 5px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 120px;
+  max-width: 200px;
+  cursor: pointer;
+}
+
+.trade-chart-symbol-select:focus {
+  outline: none;
+  border-color: #474d57;
+}
+
+.trade-chart-symbol-select optgroup {
+  color: #848e9c;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.trade-history-toggle {
+  appearance: none;
+  border: 1px solid #2b3139;
+  background: #1e2329;
+  color: #848e9c;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.trade-history-toggle:hover {
+  color: #eaecef;
+  border-color: #474d57;
+}
+
+.trade-history-toggle.is-off {
+  color: #eaecef;
+  border-color: #474d57;
+  background: #2b3139;
+}
+
 .trade-clean-symbols {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
   min-width: 0;
   margin-right: auto;
+}
+
+body[data-page="trade"].trade-clean-mode .trade-clean-symbols {
+  display: none;
 }
 
 body[data-page="trade"].trade-clean-mode .trade-clean-head {
@@ -2100,6 +2154,14 @@ body[data-page="trade"].trade-clean-mode #trade-metrics {
 
 .afx-pos-pnl:not(.positive):not(.negative) {
   color: #848e9c;
+}
+
+.afx-position-row--buy .afx-pos-pnl.order-type {
+  color: #0ecb81;
+}
+
+.afx-position-row--sell .afx-pos-pnl.order-type {
+  color: #f6465d;
 }
 
 .afx-pos-vol {

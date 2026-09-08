@@ -42,6 +42,8 @@
   let layoutReady = false;
   /** @type {Map<string, number>} */
   const sessionFillTimes = new Map();
+  let historyVisible = true;
+  const STORAGE_HISTORY = "alphafx_trade_history_visible";
 
   function tickTimeMs(tick) {
     let t = Number(tick?.time_ms) || Date.now();
@@ -225,6 +227,22 @@
     const closeHint = normalizeUnixSec(closedSec);
     const floorSec = normalizeUnixSec(minSec);
     const step = tfStep(activeTimeframe);
+    const lastBar = barBuffer.length ? barBuffer[barBuffer.length - 1] : null;
+    const lastBarTime = lastBar?.time ?? null;
+    const tradeOnFormingBar = (sec) => {
+      if (sec == null || lastBarTime == null) return false;
+      return barBucket(sec * 1000, activeTimeframe) === lastBarTime;
+    };
+    const allowFormingBar = tradeOnFormingBar(preferred) || tradeOnFormingBar(closeHint);
+
+    // Server timestamps in view win — avoids snapping old fills onto the live candle.
+    if (preferred != null && isTimeInBarBuffer(preferred)) {
+      if (floorSec == null || preferred >= floorSec) return preferred;
+    }
+    if (closeHint != null && isTimeInBarBuffer(closeHint)) {
+      if (floorSec == null || closeHint >= floorSec) return closeHint;
+    }
+
     const prefBar = preferred != null ? barAtUnixSec(preferred) : null;
     if (prefBar && priceFitsBar(p, prefBar)) {
       if (floorSec == null || preferred >= floorSec) return preferred;
@@ -235,18 +253,28 @@
       if (floorSec == null || closeHint >= floorSec) return closeHint;
     }
 
-    // Prefer the newest candle in view whose range contains the execution price.
-    for (let i = barBuffer.length - 1; i >= 0; i--) {
+    let startIdx = barBuffer.length - 1;
+    if (closeBar) {
+      const idx = barBuffer.findIndex((b) => b.time === closeBar.time);
+      if (idx >= 0) startIdx = idx;
+    } else if (prefBar) {
+      const idx = barBuffer.findIndex((b) => b.time === prefBar.time);
+      if (idx >= 0) startIdx = idx;
+    }
+
+    const maxIdx = allowFormingBar ? barBuffer.length - 1 : Math.max(0, barBuffer.length - 2);
+    startIdx = Math.min(startIdx, maxIdx);
+
+    for (let i = startIdx; i >= 0; i--) {
       const b = barBuffer[i];
       const candidate = b.time + Math.floor(step / 2);
       if (floorSec != null && candidate < floorSec) continue;
       if (priceFitsBar(p, b)) return candidate;
     }
 
-    // Fallback: nearest OHLC to price, searching recent bars first.
     let bestTime = preferred ?? closeHint ?? null;
     let bestDiff = Infinity;
-    for (let i = barBuffer.length - 1; i >= 0; i--) {
+    for (let i = startIdx; i >= 0; i--) {
       const b = barBuffer[i];
       const candidate = b.time + Math.floor(step / 2);
       if (floorSec != null && candidate < floorSec) continue;
@@ -527,6 +555,98 @@
     } catch {
       /* ignore */
     }
+  }
+
+  function loadHistoryPref() {
+    try {
+      const raw = localStorage.getItem(STORAGE_HISTORY);
+      if (raw === "0" || raw === "false") historyVisible = false;
+      else if (raw === "1" || raw === "true") historyVisible = true;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function saveHistoryPref() {
+    try {
+      localStorage.setItem(STORAGE_HISTORY, historyVisible ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function applyHistoryVisibility() {
+    window.AlphaFXPositionOverlay?.setHistoryVisible?.(historyVisible);
+    const btn = document.getElementById("trade-history-toggle");
+    if (btn) {
+      btn.textContent = historyVisible ? "Hide history" : "Show history";
+      btn.setAttribute("aria-pressed", historyVisible ? "true" : "false");
+      btn.classList.toggle("is-off", !historyVisible);
+    }
+  }
+
+  function toggleHistoryVisibility() {
+    historyVisible = !historyVisible;
+    saveHistoryPref();
+    applyHistoryVisibility();
+  }
+
+  function allChartSymbols() {
+    const out = [];
+    const seen = new Set();
+    Object.values(groups).forEach((items) => {
+      (items || []).forEach((item) => {
+        const sym = String(item.symbol || "").toUpperCase();
+        if (!sym || seen.has(sym)) return;
+        seen.add(sym);
+        out.push({ symbol: sym, name: item.name || sym });
+      });
+    });
+    return out;
+  }
+
+  function renderChartSymbolSelect() {
+    const sel = document.getElementById("trade-chart-symbol");
+    if (!sel) return;
+    const prev = sel.value;
+    const symbols = allChartSymbols();
+    if (!symbols.length) {
+      sel.innerHTML = `<option value="${activeSymbol}">${activeSymbol}</option>`;
+      sel.value = activeSymbol;
+      return;
+    }
+    const byGroup = {};
+    Object.entries(groups).forEach(([group, items]) => {
+      byGroup[group] = (items || []).map((i) => String(i.symbol).toUpperCase());
+    });
+    sel.innerHTML = Object.entries(byGroup)
+      .map(([group, syms]) => {
+        const opts = syms
+          .map((sym) => {
+            const item = symbols.find((s) => s.symbol === sym);
+            const label = item?.name && item.name !== sym ? `${sym} — ${item.name}` : sym;
+            return `<option value="${sym}">${label}</option>`;
+          })
+          .join("");
+        return `<optgroup label="${group}">${opts}</optgroup>`;
+      })
+      .join("");
+    const next = symbols.some((s) => s.symbol === prev) ? prev : activeSymbol;
+    sel.value = next;
+  }
+
+  function syncChartSymbolSelect(symbol) {
+    const sel = document.getElementById("trade-chart-symbol");
+    if (!sel) return;
+    if (sel.value !== symbol) sel.value = symbol;
+  }
+
+  function bindChartControls() {
+    document.getElementById("trade-history-toggle")?.addEventListener("click", toggleHistoryVisibility);
+    document.getElementById("trade-chart-symbol")?.addEventListener("change", (e) => {
+      const sym = e.target.value;
+      if (sym && sym !== activeSymbol) selectSymbol(sym);
+    });
   }
 
   function renderTimeframes() {
@@ -1806,6 +1926,7 @@
     saveSymbolPref();
     openTab(symbol);
     renderSymbolTabs();
+    syncChartSymbolSelect(symbol);
     document.querySelectorAll(".trade-watchlist-row").forEach((row) => {
       row.classList.toggle("active", row.dataset.symbol === symbol);
     });
@@ -1823,6 +1944,7 @@
     renderWatchlist();
     loadTabs();
     renderSymbolTabs();
+    renderChartSymbolSelect();
   }
 
   function waitForQuote(symbol, timeoutMs = 4000) {
@@ -1903,6 +2025,7 @@
       updateChartBadge(symbol);
       syncChartPositions();
       window.AlphaFXPositionOverlay?.sync?.();
+      applyHistoryVisibility();
     } catch (e) {
       console.error("loadChart failed:", e);
     } finally {
@@ -1946,9 +2069,12 @@
     updateOrderTicketUI();
     loadTimeframePref();
     loadSymbolPref();
+    loadHistoryPref();
     loadAccountPref();
     renderTimeframes();
     bindTimeframes();
+    bindChartControls();
+    applyHistoryVisibility();
     document.getElementById("pt-sidebar-toggle")?.addEventListener("click", () => {
       setTimeout(resizeChartSoon, 280);
     });

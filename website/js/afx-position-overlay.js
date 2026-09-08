@@ -35,6 +35,7 @@
 
   /** @type {Map<string, { unixSec: number, barTime: number }>} */
   const historyFillAnchors = new Map();
+  let historyVisible = true;
 
   function ctx() {
     return getContext?.() || {};
@@ -532,7 +533,7 @@
   }
 
   function repositionTradeConnectors() {
-    if (!connectorSvg) return;
+    if (!historyVisible || !connectorSvg) return;
     const frame = getPlotFrame();
     const sym = ctx().activeSymbol;
     for (const [tradeId, conn] of tradeConnectors) {
@@ -730,6 +731,7 @@
   function syncClosedHistory() {
     if (!layer) return;
     clearHtmlTradeHistory();
+    if (!historyVisible) return;
     const sym = ctx().activeSymbol;
     const historyIds = new Set();
 
@@ -773,6 +775,7 @@
   }
 
   function repositionClosedEntryMarkers() {
+    if (!historyVisible) return;
     const frame = getPlotFrame();
     const sym = ctx().activeSymbol;
     for (const marker of closedEntryMarkers.values()) {
@@ -799,6 +802,7 @@
   }
 
   function repositionCloseMarkers() {
+    if (!historyVisible) return;
     const frame = getPlotFrame();
     const sym = ctx().activeSymbol;
     for (const marker of closeMarkers.values()) {
@@ -877,6 +881,12 @@
     if (price != null) showPriceTag(view.tpPriceTag, price, frame, "tp", sym, anchorX);
   }
 
+  function formatOrderTypeLabel(position) {
+    const side = String(position.side || "buy").toUpperCase();
+    const kind = String(position.orderKind || "limit").toUpperCase();
+    return `${side} ${kind}`;
+  }
+
   function fmtPnlDisplay(pnl) {
     const n = Number(pnl || 0);
     if (n === 0) return "$0.00";
@@ -898,11 +908,19 @@
 
   function updatePnlDisplay(view) {
     if (!view.pnlEl) return;
-    const pnl = livePnlFor(view.position);
-    view.pnlEl.textContent = fmtPnlDisplay(pnl);
-    view.pnlEl.classList.remove("positive", "negative");
-    const cls = pnlClass(pnl);
-    if (cls) view.pnlEl.classList.add(cls);
+    const status = view.position.status;
+    if (status === "draft" || status === "pending") {
+      view.pnlEl.textContent = formatOrderTypeLabel(view.position);
+      view.pnlEl.classList.remove("positive", "negative");
+      view.pnlEl.classList.add("order-type");
+    } else {
+      const pnl = livePnlFor(view.position);
+      view.pnlEl.textContent = fmtPnlDisplay(pnl);
+      view.pnlEl.classList.remove("order-type");
+      view.pnlEl.classList.remove("positive", "negative");
+      const cls = pnlClass(pnl);
+      if (cls) view.pnlEl.classList.add(cls);
+    }
     if (view.volEl) {
       view.volEl.textContent = Number(view.position.volume).toFixed(2);
     }
@@ -1747,6 +1765,17 @@
     trackedCloseIds.clear();
   }
 
+  function setHistoryVisible(visible) {
+    historyVisible = !!visible;
+    if (!historyVisible) clearHtmlTradeHistory();
+    else syncClosedHistory();
+    scheduleReposition();
+  }
+
+  function getHistoryVisible() {
+    return historyVisible;
+  }
+
   function attach({ chart: c, series: s, container: el, getContext: gc }) {
     chart = c;
     series = s;
@@ -1796,6 +1825,8 @@
     barTimeForSec: (sec) => resolveBarTime(sec),
     getHistoryFillSec,
     getCloseAnchorSec,
+    setHistoryVisible,
+    getHistoryVisible,
     currentBarTime: () => ctx().fallbackTime?.() ?? null,
   };
 })();
