@@ -215,82 +215,77 @@
     return p >= Number(bar.low) - pad && p <= Number(bar.high) + pad;
   }
 
+  function barMidSec(bar) {
+    if (!bar) return null;
+    return bar.time + Math.floor(tfStep(activeTimeframe) / 2);
+  }
+
+  function acceptMarkerSec(sec, floorSec) {
+    const normalized = normalizeUnixSec(sec);
+    if (normalized == null || !isPlausibleUnixSec(normalized)) return null;
+    if (floorSec != null && normalized < floorSec) return null;
+    if (!isTimeInBarBuffer(normalized)) return null;
+    return normalized;
+  }
+
+  function anchorBarIndex(anchorSec) {
+    if (anchorSec == null || !barBuffer.length) return -1;
+    const bar = barAtUnixSec(anchorSec);
+    if (bar) return barBuffer.findIndex((b) => b.time === bar.time);
+    const bucket = barBucket(anchorSec * 1000, activeTimeframe);
+    if (bucket < barBuffer[0].time) return -1;
+    for (let i = barBuffer.length - 1; i >= 0; i--) {
+      if (barBuffer[i].time <= bucket) return i;
+    }
+    return -1;
+  }
+
   /**
-   * Pick the unix second for a marker so (time, price) lands on a real candle.
-   * Fixes stale opened_at when a limit order was placed hours before it filled.
+   * Pick marker time from server timestamps; only search a small bar window
+   * around the anchor when opened_at is stale (limit placed before fill).
    */
   function resolveMarkerTimeForPrice(price, preferredSec, closedSec, minSec) {
     const p = Number(price);
-    if (!Number.isFinite(p)) return normalizeUnixSec(preferredSec);
-
     const preferred = normalizeUnixSec(preferredSec);
     const closeHint = normalizeUnixSec(closedSec);
     const floorSec = normalizeUnixSec(minSec);
     const step = tfStep(activeTimeframe);
-    const lastBar = barBuffer.length ? barBuffer[barBuffer.length - 1] : null;
-    const lastBarTime = lastBar?.time ?? null;
-    const tradeOnFormingBar = (sec) => {
-      if (sec == null || lastBarTime == null) return false;
-      return barBucket(sec * 1000, activeTimeframe) === lastBarTime;
-    };
-    const allowFormingBar = tradeOnFormingBar(preferred) || tradeOnFormingBar(closeHint);
 
-    // Server timestamps in view win — avoids snapping old fills onto the live candle.
-    if (preferred != null && isTimeInBarBuffer(preferred)) {
-      if (floorSec == null || preferred >= floorSec) return preferred;
-    }
-    if (closeHint != null && isTimeInBarBuffer(closeHint)) {
-      if (floorSec == null || closeHint >= floorSec) return closeHint;
-    }
+    const direct = acceptMarkerSec(preferred, floorSec) ?? acceptMarkerSec(closeHint, floorSec);
+    if (direct != null) return direct;
+
+    const anchorSec = closeHint ?? preferred;
+    const anchorIdx = anchorBarIndex(anchorSec);
+    if (anchorIdx < 0) return null;
 
     const prefBar = preferred != null ? barAtUnixSec(preferred) : null;
-    if (prefBar && priceFitsBar(p, prefBar)) {
-      if (floorSec == null || preferred >= floorSec) return preferred;
-    }
-
     const closeBar = closeHint != null ? barAtUnixSec(closeHint) : null;
+    if (prefBar && priceFitsBar(p, prefBar)) {
+      const sec = acceptMarkerSec(preferred, floorSec);
+      if (sec != null) return sec;
+    }
     if (closeBar && priceFitsBar(p, closeBar)) {
-      if (floorSec == null || closeHint >= floorSec) return closeHint;
+      const sec = acceptMarkerSec(closeHint, floorSec);
+      if (sec != null) return sec;
     }
 
-    let startIdx = barBuffer.length - 1;
-    if (closeBar) {
-      const idx = barBuffer.findIndex((b) => b.time === closeBar.time);
-      if (idx >= 0) startIdx = idx;
-    } else if (prefBar) {
-      const idx = barBuffer.findIndex((b) => b.time === prefBar.time);
-      if (idx >= 0) startIdx = idx;
-    }
-
-    const maxIdx = allowFormingBar ? barBuffer.length - 1 : Math.max(0, barBuffer.length - 2);
-    startIdx = Math.min(startIdx, maxIdx);
-
-    for (let i = startIdx; i >= 0; i--) {
-      const b = barBuffer[i];
-      const candidate = b.time + Math.floor(step / 2);
-      if (floorSec != null && candidate < floorSec) continue;
-      if (priceFitsBar(p, b)) return candidate;
-    }
-
-    let bestTime = preferred ?? closeHint ?? null;
-    let bestDiff = Infinity;
-    for (let i = startIdx; i >= 0; i--) {
-      const b = barBuffer[i];
-      const candidate = b.time + Math.floor(step / 2);
-      if (floorSec != null && candidate < floorSec) continue;
-      const diff = Math.min(
-        Math.abs(Number(b.close) - p),
-        Math.abs(Number(b.open) - p),
-        Math.abs(Number(b.high) - p),
-        Math.abs(Number(b.low) - p),
-      );
-      if (diff < bestDiff) {
-        bestDiff = diff;
-        bestTime = candidate;
+    // Stale opened_at: walk backward from anchor bar only (never scan the whole chart).
+    const lookback = 8;
+    const endIdx = Math.max(0, anchorIdx - lookback);
+    if (Number.isFinite(p)) {
+      for (let i = anchorIdx; i >= endIdx; i--) {
+        const b = barBuffer[i];
+        if (!priceFitsBar(p, b)) continue;
+        const candidate = b.time + Math.floor(step / 2);
+        if (floorSec != null && candidate < floorSec) continue;
+        return candidate;
       }
     }
-    if (bestTime != null && (floorSec == null || bestTime >= floorSec)) return bestTime;
-    return floorSec ?? bestTime;
+
+    const anchorBar = barBuffer[anchorIdx];
+    const mid = barMidSec(anchorBar);
+    if (mid != null && (floorSec == null || mid >= floorSec)) return mid;
+    return null;
   }
 
   function resolveHistoryOpenSec(tradeId, serverOpenedTime, entry, closedTime) {
@@ -299,13 +294,13 @@
       window.AlphaFXPositionOverlay?.getHistoryFillSec?.(tradeId);
     if (remembered != null) {
       const sec = normalizeUnixSec(remembered);
-      if (sec != null && isPlausibleUnixSec(sec)) {
-        const bar = barAtUnixSec(sec);
-        if (!entry || !bar || priceFitsBar(entry, bar)) return sec;
-      }
+      const accepted = acceptMarkerSec(sec);
+      if (accepted != null) return accepted;
     }
     const opened = normalizeUnixSec(serverOpenedTime);
     const closed = normalizeUnixSec(closedTime);
+    const accepted = acceptMarkerSec(opened);
+    if (accepted != null) return accepted;
     return resolveMarkerTimeForPrice(entry, opened, closed);
   }
 
@@ -313,11 +308,14 @@
     const anchor = window.AlphaFXPositionOverlay?.getCloseAnchorSec?.(tradeId);
     if (anchor != null) {
       const sec = normalizeUnixSec(anchor);
-      if (sec != null && isPlausibleUnixSec(sec)) return sec;
+      const accepted = acceptMarkerSec(sec);
+      if (accepted != null) return accepted;
     }
     const closed = normalizeUnixSec(serverClosedTime);
     const opened = normalizeUnixSec(openedTime);
     const floorSec = normalizeUnixSec(resolvedOpenSec ?? openedTime);
+    const accepted = acceptMarkerSec(closed, floorSec);
+    if (accepted != null) return accepted;
     return resolveMarkerTimeForPrice(exit, closed, closed ?? opened, floorSec);
   }
 
