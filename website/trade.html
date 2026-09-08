@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="css/capiffy/3ac04c147fc81d91.css">
   <link rel="stylesheet" href="css/capiffy/3c6a7efccbedf43f.css">
   <link rel="stylesheet" href="css/fonts.css">
-  <link rel="stylesheet" href="css/trade-terminal.css?v=20260908j">
+  <link rel="stylesheet" href="css/trade-terminal.css?v=20260908k">
 </head>
 <body data-page="trade" data-title="Trade" data-no-wrap="true">
   <div id="app-root">
@@ -79,11 +79,11 @@
             <label for="trade-volume">Volume (lots)</label>
             <input id="trade-volume" type="number" value="0.01" min="0.01" step="0.01">
           </div>
-          <div class="trade-field">
+          <div class="trade-field trade-field--sl" id="trade-sl-field">
             <label for="trade-sl">Stop loss (optional)</label>
             <input id="trade-sl" type="text" placeholder="—">
           </div>
-          <div class="trade-field">
+          <div class="trade-field trade-field--tp" id="trade-tp-field">
             <label for="trade-tp">Take profit (optional)</label>
             <input id="trade-tp" type="text" placeholder="—">
           </div>
@@ -204,7 +204,8 @@
   <script src="js/ws-quotes.js"></script>
   <script src="js/trade-toast.js"></script>
   <script src="js/sim-pnl.js"></script>
-  <script src="js/chart-positions.js?v=20260908j"></script>
-  <script src="js/trade.js?v=20260908j"></script>
+  <script src="js/afx-position-overlay.js?v=20260908k"></script>
+  <script src="js/chart-positions.js?v=20260908k"></script>
+  <script src="js/trade.js?v=20260908k"></script>
 </body>
 </html>

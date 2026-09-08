@@ -937,6 +937,10 @@
   }
 
   function sync() {
+    if (document.body.classList.contains("trade-clean-mode")) {
+      window.AlphaFXPositionOverlay?.sync();
+      return;
+    }
     const prevSelected = selectedPosId;
     const prevBarMode = barMode;
     const prevSlider = sliderPane;
@@ -1288,9 +1292,27 @@
   }
 
   function onModeChange() {
-    if (!isMt5Mode()) {
+    if (!chart || !series || !container || !getContext) return;
+    const clean = document.body.classList.contains("trade-clean-mode");
+    if (clean) {
+      clear();
       deselectPosition();
+      window.AlphaFXPositionOverlay?.attach({ chart, series, container, getContext });
+      return;
     }
+    window.AlphaFXPositionOverlay?.detach();
+    overlayRoot =
+      container.parentElement?.querySelector("#trade-pos-overlays") ||
+      container.parentElement?.querySelector(".trade-pos-overlays");
+    if (!overlayRoot && container.parentElement) {
+      overlayRoot = document.createElement("div");
+      overlayRoot.id = "trade-pos-overlays";
+      overlayRoot.className = "trade-pos-overlays";
+      overlayRoot.setAttribute("aria-hidden", "true");
+      container.parentElement.appendChild(overlayRoot);
+    }
+    if (!dragHost) bindDrag();
+    if (!isMt5Mode()) deselectPosition();
     sync();
   }
 
@@ -1299,6 +1321,12 @@
     series = s;
     container = el;
     getContext = gc;
+
+    if (document.body.classList.contains("trade-clean-mode")) {
+      window.AlphaFXPositionOverlay?.attach({ chart: c, series: s, container: el, getContext: gc });
+      window.addEventListener("resize", onModeChange);
+      return;
+    }
     overlayRoot =
       el.parentElement?.querySelector("#trade-pos-overlays") ||
       el.parentElement?.querySelector(".trade-pos-overlays");
@@ -1316,6 +1344,10 @@
   }
 
   function detach() {
+    if (document.body.classList.contains("trade-clean-mode")) {
+      window.AlphaFXPositionOverlay?.detach();
+      return;
+    }
     clear();
     unbindDrag();
     deselectPosition();
@@ -1336,5 +1368,6 @@
     updateLivePnl,
     layoutAll,
     deselectPosition,
+    modeChange: onModeChange,
   };
 })();

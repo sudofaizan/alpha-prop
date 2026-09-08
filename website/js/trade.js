@@ -255,9 +255,35 @@
       barBuffer,
       fallbackTime: () => barBuffer[barBuffer.length - 1]?.time,
       closePosition: (id) => closePosition(id),
+      cancelPendingOrder: (id) => cancelPendingOrder(id),
+      submitDraftOrder: (draft) => submitDraftOrder(draft),
+      getMarketPrice: () => {
+        const tick = window.AlphaFXQuotes?.getLast?.(activeSymbol);
+        if (!tick) return null;
+        return (Number(tick.bid) + Number(tick.ask)) / 2;
+      },
       syncTicketStops: syncTicketStopsFromChart,
       isMt5Mobile: () => document.body.classList.contains("trade-mt5-mode"),
     };
+  }
+
+  async function submitDraftOrder(draft) {
+    if (!tradingEnabled || !accountId) throw new Error("Trading unavailable");
+    const res = await window.AlphaFXApi.request("/api/v1/trade/orders", {
+      method: "POST",
+      body: JSON.stringify({
+        account_id: accountId,
+        symbol: activeSymbol,
+        side: draft.side,
+        volume: draft.volume,
+        order_type: draft.orderKind,
+        price: draft.price,
+        stop_loss: draft.sl,
+        take_profit: draft.tp,
+      }),
+    });
+    toast(res.message || "Order placed", "success");
+    await loadTradeSnapshot();
   }
 
   function bindChartPositions(container) {
@@ -933,6 +959,35 @@
       toast("Enter a valid volume (min 0.01 lots).", "error");
       return;
     }
+
+    const isClean = document.body.classList.contains("trade-clean-mode");
+
+    if (isClean && orderType !== "market") {
+      const price = parseOptionalPrice(document.getElementById("trade-price")?.value);
+      if (price == null) {
+        toast("Enter an order price for limit/stop orders.", "error");
+        return;
+      }
+      window.AlphaFXPositionOverlay?.openDraft({
+        side,
+        volume,
+        orderKind: orderType,
+        price,
+      });
+      const body = document.getElementById("afx-trade-body");
+      const ticket = document.getElementById("trade-ticket");
+      if (body && ticket && !body.hidden) {
+        body.hidden = true;
+        ticket.classList.add("afx-trade-widget--collapsed");
+        const collapse = document.getElementById("afx-trade-collapse");
+        if (collapse) {
+          collapse.textContent = "+";
+          collapse.setAttribute("aria-expanded", "false");
+        }
+      }
+      return;
+    }
+
     const price = parseOptionalPrice(document.getElementById("trade-price")?.value);
     if ((orderType === "limit" || orderType === "stop") && price == null) {
       toast("Enter an order price for limit/stop orders.", "error");
@@ -941,18 +996,21 @@
     orderBusy = true;
     setTradingControls(tradingEnabled);
     try {
+      const body = {
+        account_id: accountId,
+        symbol: activeSymbol,
+        side,
+        volume,
+        order_type: orderType,
+        price,
+      };
+      if (!isClean) {
+        body.stop_loss = parseOptionalPrice(document.getElementById("trade-sl")?.value);
+        body.take_profit = parseOptionalPrice(document.getElementById("trade-tp")?.value);
+      }
       const res = await window.AlphaFXApi.request("/api/v1/trade/orders", {
         method: "POST",
-        body: JSON.stringify({
-          account_id: accountId,
-          symbol: activeSymbol,
-          side,
-          volume,
-          order_type: orderType,
-          price,
-          stop_loss: parseOptionalPrice(document.getElementById("trade-sl")?.value),
-          take_profit: parseOptionalPrice(document.getElementById("trade-tp")?.value),
-        }),
+        body: JSON.stringify(body),
       });
       toast(res.message || (orderType === "market" ? "Order filled" : "Order placed"), "success");
       await loadTradeSnapshot();
@@ -1216,6 +1274,7 @@
       window.AlphaFXChartPositions?.deselectPosition?.();
     }
     window.AlphaFXChartPositions?.sync?.();
+    window.AlphaFXChartPositions?.modeChange?.();
     resizeChartSoon();
   }
 
@@ -1650,7 +1709,10 @@
     await selectSymbol(startSym);
 
     applyMobileTradeLayout();
-    window.addEventListener("resize", applyMobileTradeLayout);
+    window.addEventListener("resize", () => {
+      applyMobileTradeLayout();
+      window.AlphaFXChartPositions?.sync?.();
+    });
 
     accountPollTimer = setInterval(loadTradeSnapshot, 8000);
   }
