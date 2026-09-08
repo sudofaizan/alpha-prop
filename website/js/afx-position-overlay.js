@@ -906,15 +906,52 @@
     return live?.pnl ?? position.pnl ?? 0;
   }
 
+  function pnlAtPrice(position, exitPrice) {
+    if (exitPrice == null || !window.AlphaFXSimPnl?.calcPnl) return null;
+    const meta = ctx().symbolMeta?.[position.symbol];
+    return window.AlphaFXSimPnl.calcPnl(
+      position.symbol,
+      position.side,
+      position.volume,
+      position.price,
+      Number(exitPrice),
+      meta,
+    );
+  }
+
+  function dragPreviewExitPrice(view) {
+    if (!view.drag?.previewLine || (view.drag.kind !== "sl" && view.drag.kind !== "tp")) return null;
+    try {
+      const p = view.drag.previewLine.options?.().price;
+      return p != null && Number.isFinite(Number(p)) ? Number(p) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function pnlForRowDisplay(view) {
+    const previewExit = dragPreviewExitPrice(view);
+    if (previewExit != null) {
+      const atLevel = pnlAtPrice(view.position, previewExit);
+      if (atLevel != null) return atLevel;
+    }
+    const status = view.position.status;
+    if (status === "draft" || status === "pending") return null;
+    return livePnlFor(view.position);
+  }
+
   function updatePnlDisplay(view) {
     if (!view.pnlEl) return;
     const status = view.position.status;
-    if (status === "draft" || status === "pending") {
+    const previewPnl = pnlForRowDisplay(view);
+    const draggingStop = view.drag && (view.drag.kind === "sl" || view.drag.kind === "tp");
+
+    if ((status === "draft" || status === "pending") && !draggingStop) {
       view.pnlEl.textContent = formatOrderTypeLabel(view.position);
-      view.pnlEl.classList.remove("positive", "negative");
+      view.pnlEl.classList.remove("positive", "negative", "order-type");
       view.pnlEl.classList.add("order-type");
     } else {
-      const pnl = livePnlFor(view.position);
+      const pnl = previewPnl ?? livePnlFor(view.position);
       view.pnlEl.textContent = fmtPnlDisplay(pnl);
       view.pnlEl.classList.remove("order-type");
       view.pnlEl.classList.remove("positive", "negative");
@@ -1073,6 +1110,7 @@
     }
     view.drag.previewLine?.applyOptions({ price });
     updatePriceTags(view, viewId);
+    updatePnlDisplay(view);
     scheduleReposition();
   }
 
@@ -1280,6 +1318,7 @@
         restoreLevelAfterCancel(view, kind, previousSl, previousTp);
         toast(error, "error");
         applyLineStyles();
+        updatePnlDisplay(view);
         scheduleReposition();
         continue;
       }
@@ -1297,6 +1336,7 @@
       }
 
       updatePriceTags(view, viewId);
+      updatePnlDisplay(view);
       scheduleReposition();
     }
     if (anyDrag) chart?.applyOptions({ handleScroll: true, handleScale: true });
