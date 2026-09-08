@@ -29,7 +29,7 @@ class UpdateStopsRequest(BaseModel):
 
 class UpdatePendingOrderRequest(BaseModel):
     account_id: int
-    price: float = Field(gt=0)
+    price: float | None = Field(default=None, gt=0)
     stop_loss: float | None = None
     take_profit: float | None = None
 

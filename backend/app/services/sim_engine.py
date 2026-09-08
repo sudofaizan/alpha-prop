@@ -467,12 +467,13 @@ def update_pending_order(
     user_id: int,
     account_id: int,
     trade_id: int,
-    price: float,
+    price: float | None = None,
     stop_loss: float | None = None,
     take_profit: float | None = None,
     *,
     set_stop_loss: bool = False,
     set_take_profit: bool = False,
+    set_price: bool = True,
 ) -> SimTrade:
     account = _require_account(db, user_id, account_id)
     trade = (
@@ -484,7 +485,7 @@ def update_pending_order(
         raise HTTPException(status_code=404, detail="Pending order not found")
 
     side_norm = trade.side.upper()
-    trigger = _round_price(trade.symbol, price)
+    trigger = _round_price(trade.symbol, float(price if set_price and price is not None else trade.entry_price))
     sl = trade.stop_loss
     tp = trade.take_profit
     if set_stop_loss:

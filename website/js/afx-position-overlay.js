@@ -1037,9 +1037,69 @@
     updatePriceTags(view, id);
   }
 
+  async function persistPendingOrder(view, patch = {}) {
+    const id = view.position.id;
+    if (isDraftId(id) || view.position.status !== "pending") return;
+    const accountId = ctx().accountId;
+    if (!accountId || !window.AlphaFXApi) return;
+
+    const body = { account_id: accountId };
+    if (patch.price != null) body.price = Number(patch.price);
+    else body.price = Number(view.position.price);
+    if ("sl" in patch) body.stop_loss = patch.sl;
+    if ("tp" in patch) body.take_profit = patch.tp;
+
+    const paths = [
+      { method: "PATCH", url: `/api/v1/trade/orders/pending/${id}` },
+      { method: "POST", url: `/api/v1/trade/orders/pending/${id}/update` },
+    ];
+
+    let lastErr = null;
+    for (const { method, url } of paths) {
+      try {
+        await window.AlphaFXApi.request(url, {
+          method,
+          body: JSON.stringify(body),
+        });
+        const pending = ctx().pending || [];
+        const row = pending.find((p) => String(p.id) === String(id));
+        if (row) {
+          if (patch.price != null) row.price = patch.price;
+          if ("sl" in patch) row.sl = patch.sl;
+          if ("tp" in patch) row.tp = patch.tp;
+        }
+        if (patch.price != null) {
+          toast(`Order · ${fmtPrice(patch.price, view.position.symbol)}`);
+        } else if ("sl" in patch) {
+          toast(
+            patch.sl == null
+              ? "Stop loss removed"
+              : `Stop loss · ${fmtPrice(patch.sl, view.position.symbol)}`,
+          );
+        } else if ("tp" in patch) {
+          toast(
+            patch.tp == null
+              ? "Take profit removed"
+              : `Take profit · ${fmtPrice(patch.tp, view.position.symbol)}`,
+          );
+        }
+        ctx().reloadSnapshot?.();
+        return;
+      } catch (e) {
+        lastErr = e;
+        if (e?.status !== 404 && e?.status !== 405) break;
+      }
+    }
+    toast(lastErr?.message || "Could not update order", "error");
+    sync();
+  }
+
   async function persistSlTp(view, kind, price) {
     const id = view.position.id;
     if (isDraftId(id)) return;
+    if (view.position.status === "pending") {
+      return persistPendingOrder(view, kind === "sl" ? { sl: price } : { tp: price });
+    }
     const accountId = ctx().accountId;
     if (!accountId || !window.AlphaFXApi) return;
     const sym = view.position.symbol;
@@ -1067,6 +1127,9 @@
   async function clearSlTpOnServer(view, kind) {
     const id = view.position.id;
     if (isDraftId(id)) return;
+    if (view.position.status === "pending") {
+      return persistPendingOrder(view, kind === "sl" ? { sl: null } : { tp: null });
+    }
     const accountId = ctx().accountId;
     if (!accountId || !window.AlphaFXApi) return;
     const body = { account_id: accountId };
@@ -1094,26 +1157,7 @@
   }
 
   async function persistPendingPrice(view) {
-    const id = view.position.id;
-    if (isDraftId(id)) return;
-    const accountId = ctx().accountId;
-    if (!accountId || !window.AlphaFXApi) return;
-    try {
-      await window.AlphaFXApi.request(`/api/v1/trade/orders/pending/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          account_id: accountId,
-          price: view.position.price,
-        }),
-      });
-      const pending = ctx().pending || [];
-      const row = pending.find((p) => String(p.id) === String(id));
-      if (row) row.price = view.position.price;
-      toast(`Order · ${fmtPrice(view.position.price, view.position.symbol)}`);
-    } catch (e) {
-      toast(e?.message || "Could not update order", "error");
-      sync();
-    }
+    return persistPendingOrder(view, { price: view.position.price });
   }
 
   function onPointerUp(event) {

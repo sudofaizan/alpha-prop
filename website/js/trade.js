@@ -259,6 +259,7 @@
       closePosition: (id) => closePosition(id),
       cancelPendingOrder: (id) => cancelPendingOrder(id),
       submitDraftOrder: (draft) => submitDraftOrder(draft),
+      reloadSnapshot: () => loadTradeSnapshot(),
       getMarketPrice: () => {
         const tick = window.AlphaFXQuotes?.getLast?.(activeSymbol);
         if (!tick) return null;

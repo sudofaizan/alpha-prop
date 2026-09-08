@@ -160,8 +160,10 @@ def update_pending_order(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Update price (and optional stops) on a pending limit/stop order."""
+    """Update price and/or stops on a pending limit/stop order."""
     fields = body.model_fields_set
+    if "price" not in fields and "stop_loss" not in fields and "take_profit" not in fields:
+        raise HTTPException(status_code=400, detail="Nothing to update")
     trade = sim_engine.update_pending_order(
         db,
         user.id,
@@ -172,8 +174,20 @@ def update_pending_order(
         body.take_profit,
         set_stop_loss="stop_loss" in fields,
         set_take_profit="take_profit" in fields,
+        set_price="price" in fields and body.price is not None,
     )
     return OrderResponse(trade_id=trade.id, message=f"Order #{trade.id} updated @ {trade.entry_price}")
+
+
+@router.post("/orders/pending/{trade_id}/update", response_model=OrderResponse)
+def update_pending_order_post(
+    trade_id: int,
+    body: UpdatePendingOrderRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """POST alias for pending order update (proxy-safe)."""
+    return update_pending_order(trade_id, body, user, db)
 
 
 @router.get("/positions")
