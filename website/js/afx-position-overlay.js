@@ -58,14 +58,13 @@
 
   function formatPositionLabel(position) {
     const side = String(position.side).toLowerCase();
-    const arrow = side === "sell" ? "↓" : "↑";
     const sideU = side.toUpperCase();
     const volume = Number(position.volume).toFixed(2);
     if (position.status === "draft" || position.status === "pending") {
       const kind = String(position.orderKind || "limit").toUpperCase();
-      return `${arrow} ${sideU} ${kind} ${volume}`;
+      return `${sideU} ${kind} ${volume}`;
     }
-    return `${arrow} ${sideU} ${volume}`;
+    return `${sideU} ${volume}`;
   }
 
   function isOrderEntryDraggable(position) {
@@ -116,6 +115,21 @@
     const y = series.priceToCoordinate(price);
     if (y == null) return null;
     return getPlotFrame().top + y;
+  }
+
+  function resolvePositionTime(position) {
+    if (position.time != null) return position.time;
+    if (position.opened_time != null && ctx().snapBarTime) {
+      return ctx().snapBarTime(position.opened_time);
+    }
+    return ctx().fallbackTime?.() ?? null;
+  }
+
+  function timeToLocalX(time) {
+    if (!chart || time == null) return null;
+    const x = chart.timeScale().timeToCoordinate(time);
+    if (x == null) return null;
+    return getPlotFrame().left + x;
   }
 
   function clientYToPrice(clientY) {
@@ -239,6 +253,7 @@
       }
       view.row.classList.toggle("afx-position-row--active", id === activeId);
       view.label.classList.toggle("afx-position-label--focused", id === activeId && activeFocus === "entry");
+      view.entryMarker?.classList.toggle("afx-entry-marker--focused", id === activeId && activeFocus === "entry");
       view.slFlag.classList.toggle("afx-position-flag--focused", id === activeId && activeFocus === "sl");
       view.tpFlag.classList.toggle("afx-position-flag--focused", id === activeId && activeFocus === "tp");
     }
@@ -249,7 +264,7 @@
     return frame.left + frame.width / 2;
   }
 
-  function showPriceTag(tag, price, frame, kind, symbol) {
+  function showPriceTag(tag, price, frame, kind, symbol, anchorX) {
     const y = priceToLocalY(price);
     if (y == null || y < frame.top || y > frame.top + frame.height) {
       tag.hidden = true;
@@ -258,9 +273,17 @@
     const prefix = kind === "sl" ? "SL" : kind === "tp" ? "TP" : "";
     tag.textContent = prefix ? `${prefix} ${fmtPrice(price, symbol)}` : fmtPrice(price, symbol);
     tag.style.top = `${y}px`;
-    tag.style.left = `${chartCenterX(frame)}px`;
+    tag.style.left = `${anchorX ?? chartCenterX(frame)}px`;
     tag.style.transform = "translate(-50%, -50%)";
     tag.hidden = false;
+  }
+
+  function createEntryMarker(side) {
+    const el = document.createElement("div");
+    el.className = `afx-entry-marker afx-entry-marker--${String(side).toLowerCase()}`;
+    el.setAttribute("aria-hidden", "true");
+    layer.appendChild(el);
+    return el;
   }
 
   function updatePriceTags(view, viewId) {
@@ -271,8 +294,9 @@
     if (!selected || activeFocus == null) return;
     const frame = getPlotFrame();
     const sym = view.position.symbol;
+    const anchorX = timeToLocalX(resolvePositionTime(view.position));
     if (activeFocus === "entry") {
-      showPriceTag(view.entryPriceTag, view.position.price, frame, "entry", sym);
+      showPriceTag(view.entryPriceTag, view.position.price, frame, "entry", sym, anchorX);
       return;
     }
     if (activeFocus === "sl") {
@@ -282,7 +306,7 @@
               ? view.drag.previewLine.options().price
               : null) ?? view.position.sl
           : view.position.sl;
-      if (price != null) showPriceTag(view.slPriceTag, price, frame, "sl", sym);
+      if (price != null) showPriceTag(view.slPriceTag, price, frame, "sl", sym, anchorX);
       return;
     }
     const price =
@@ -291,7 +315,7 @@
             ? view.drag.previewLine.options().price
             : null) ?? view.position.tp
         : view.position.tp;
-    if (price != null) showPriceTag(view.tpPriceTag, price, frame, "tp", sym);
+    if (price != null) showPriceTag(view.tpPriceTag, price, frame, "tp", sym, anchorX);
   }
 
   function hideLevel(flag, close) {
@@ -314,11 +338,12 @@
       hideLevel(flag, close);
       return;
     }
-    const centerX = chartCenterX(frame);
+    const timeX = timeToLocalX(resolvePositionTime(view.position));
     const atEntry = Math.abs(price - view.position.price) < 1e-8;
-    let baseLeft = centerX;
+    let baseLeft = timeX;
+    if (baseLeft == null) baseLeft = chartCenterX(frame);
     if (!isSet && atEntry) {
-      baseLeft = kind === "sl" ? centerX - 52 : centerX + 52;
+      baseLeft += kind === "sl" ? -22 : 22;
     }
     const viewId = view.row.dataset.positionId ?? "";
     const focused = viewId === activeId && activeFocus === kind;
@@ -331,7 +356,7 @@
     if (isSet || dragging) {
       close.style.visibility = "visible";
       close.style.top = `${y}px`;
-      close.style.left = `${baseLeft + (kind === "sl" ? 20 : -20)}px`;
+      close.style.left = `${baseLeft + (kind === "sl" ? 18 : -18)}px`;
       close.style.transform = "translate(-50%, -50%)";
     } else {
       close.style.visibility = "hidden";
@@ -547,7 +572,7 @@
     const target = event.target;
     if (
       target.closest(
-        ".afx-position-label, .afx-position-flag, .afx-position-close, .afx-position-confirm, .afx-position-row, .afx-price-tag, .afx-trade-widget, .trade-ticket",
+        ".afx-position-label, .afx-entry-marker, .afx-position-flag, .afx-position-close, .afx-position-confirm, .afx-position-row, .afx-price-tag, .afx-trade-widget, .trade-ticket",
       )
     ) {
       return;
@@ -564,6 +589,7 @@
     if (view.tpLine) removeLine(view.tpLine);
     view.row.remove();
     view.confirmBtn?.remove();
+    view.entryMarker?.remove();
     view.slFlag.remove();
     view.slClose.remove();
     view.tpFlag.remove();
@@ -706,6 +732,13 @@
     const slClose = createCloseButton("Remove stop loss");
     const tpFlag = createFlag("tp", "Drag to set take profit");
     const tpClose = createCloseButton("Remove take profit");
+    const entryMarker = createEntryMarker(side);
+
+    entryMarker.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      setActive(position.id, "entry");
+      if (isOrderEntryDraggable(position)) startDrag(position.id, "entry", e);
+    });
 
     label.addEventListener("pointerdown", (e) => {
       e.stopPropagation();
@@ -751,6 +784,7 @@
       tpLine: null,
       row,
       label,
+      entryMarker,
       confirmBtn,
       positionClose,
       slFlag,
@@ -779,18 +813,34 @@
     const frame = getPlotFrame();
     for (const view of views.values()) {
       const entryY = priceToLocalY(view.position.price);
-      if (entryY == null || entryY < frame.top || entryY > frame.top + frame.height) {
+      const entryX = timeToLocalX(resolvePositionTime(view.position));
+      if (
+        entryY == null ||
+        entryX == null ||
+        entryY < frame.top ||
+        entryY > frame.top + frame.height ||
+        entryX < frame.left ||
+        entryX > frame.left + frame.width
+      ) {
         view.row.style.visibility = "hidden";
+        if (view.entryMarker) view.entryMarker.style.visibility = "hidden";
         hideLevel(view.slFlag, view.slClose);
         hideLevel(view.tpFlag, view.tpClose);
         continue;
       }
 
+      const side = String(view.position.side).toLowerCase();
+      view.entryMarker.style.visibility = "visible";
+      view.entryMarker.style.left = `${entryX}px`;
+      view.entryMarker.style.top = `${entryY}px`;
+      view.entryMarker.style.transform =
+        side === "sell" ? "translate(-50%, -100%)" : "translate(-50%, 0)";
+
       view.row.style.visibility = "visible";
       view.row.style.display = "flex";
       view.row.style.top = `${entryY}px`;
-      view.row.style.left = `${chartCenterX(frame)}px`;
-      view.row.style.transform = "translate(-50%, -50%)";
+      view.row.style.left = `${entryX + 10}px`;
+      view.row.style.transform = "translateY(-50%)";
       view.positionClose.style.visibility = "visible";
       if (view.confirmBtn) view.confirmBtn.style.visibility = "visible";
 
@@ -808,6 +858,11 @@
     }
   }
 
+  function positionTime(pos) {
+    if (pos.opened_time != null && ctx().snapBarTime) return ctx().snapBarTime(pos.opened_time);
+    return ctx().fallbackTime?.() ?? null;
+  }
+
   function mapOpen(pos) {
     return {
       id: String(pos.id),
@@ -819,6 +874,8 @@
       orderKind: "market",
       status: "open",
       symbol: pos.symbol,
+      opened_time: pos.opened_time ?? null,
+      time: positionTime(pos),
     };
   }
 
@@ -833,6 +890,8 @@
       orderKind: String(p.order_type || "limit").toLowerCase(),
       status: "pending",
       symbol: p.symbol,
+      opened_time: p.opened_time ?? null,
+      time: positionTime(p),
     };
   }
 
@@ -912,6 +971,7 @@
       orderKind: String(orderKind).toLowerCase(),
       status: "draft",
       symbol: sym,
+      time: ctx().snapBarTime?.(Math.floor(Date.now() / 1000)) ?? ctx().fallbackTime?.(),
     });
     return id;
   }

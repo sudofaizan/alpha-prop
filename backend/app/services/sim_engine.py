@@ -177,6 +177,7 @@ def trade_row(trade: SimTrade, *, live_pnl: float | None = None) -> dict:
 
 
 def pending_row(trade: SimTrade) -> dict:
+    opened_time = int(trade.opened_at.timestamp()) if trade.opened_at else None
     return {
         "id": trade.id,
         "symbol": trade.symbol,
@@ -187,6 +188,7 @@ def pending_row(trade: SimTrade) -> dict:
         "sl": trade.stop_loss,
         "tp": trade.take_profit,
         "created": _fmt_dt(trade.opened_at),
+        "opened_time": opened_time,
         "margin_used": trade.margin_used,
     }
 

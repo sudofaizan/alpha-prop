@@ -2100,6 +2100,41 @@ body[data-page="trade"].trade-clean-mode #trade-metrics {
   color: #f6465d;
 }
 
+.afx-entry-marker {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: auto;
+  cursor: pointer;
+  touch-action: none;
+  z-index: 15;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+}
+
+.afx-entry-marker--buy {
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 10px solid #0ecb81;
+}
+
+.afx-entry-marker--sell {
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 10px solid #f6465d;
+}
+
+.afx-entry-marker--focused.afx-entry-marker--buy {
+  filter: drop-shadow(0 0 6px rgba(14, 203, 129, 0.65));
+}
+
+.afx-entry-marker--focused.afx-entry-marker--sell {
+  filter: drop-shadow(0 0 6px rgba(246, 70, 93, 0.65));
+}
+
+.afx-position-row {
+  z-index: 14;
+}
+
 .afx-position-flag {
   position: absolute;
   appearance: none;
