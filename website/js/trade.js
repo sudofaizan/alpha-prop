@@ -289,6 +289,7 @@
       }),
     });
     toast(res.message || "Order placed", "success");
+    if (String(draft.orderKind || "").toLowerCase() === "market") window.playOrderFilledSound?.();
     const fillSec = Math.floor(Date.now() / 1000);
     const barTime =
       barBuffer.length > 0
@@ -817,6 +818,7 @@
         method: "POST",
         body: JSON.stringify({ account_id: accountId, reason }),
       });
+      playStopHitSound(tradeId, reason);
       const label = reason === "tp" ? "Take profit" : "Stop loss";
       toast(`${symbol} · ${label} hit · ${res.message || "Position closed"}`, "success");
       await loadTradeSnapshot();
@@ -838,10 +840,31 @@
     }
   }
 
+  const seenPendingFillIds = new Set();
+  const seenStopHitKeys = new Set();
+
+  function playStopHitSound(tradeId, reason) {
+    const hitReason = String(reason || "").toLowerCase();
+    if (hitReason !== "sl" && hitReason !== "tp") return;
+    const key = tradeId != null ? `${tradeId}:${hitReason}` : null;
+    if (key && seenStopHitKeys.has(key)) return;
+    if (key) seenStopHitKeys.add(key);
+    if (hitReason === "tp") window.playTpHitSound?.();
+    else window.playSlHitSound?.();
+  }
+
   function notifyPendingFills(fills) {
     if (!fills?.length) return;
+    let playedOrderSound = false;
     for (const f of fills) {
+      const fillId = f.id;
+      if (fillId != null && seenPendingFillIds.has(fillId)) continue;
+      if (fillId != null) seenPendingFillIds.add(fillId);
       toast(`${f.symbol} · ${String(f.order_type || "order").toUpperCase()} ${f.side} filled @ ${f.price}`, "success");
+      if (!playedOrderSound) {
+        window.playOrderFilledSound?.();
+        playedOrderSound = true;
+      }
     }
   }
 
@@ -884,6 +907,7 @@
   function notifyStopHits(hits) {
     if (!hits?.length) return;
     for (const h of hits) {
+      playStopHitSound(h.id, h.reason);
       const label = h.reason === "tp" ? "Take profit" : "Stop loss";
       toast(`${h.symbol} · ${label} hit @ ${h.exit} · P/L ${money(h.pnl)}`, "success");
     }
@@ -1068,6 +1092,7 @@
         });
       }
       toast(res.message || (orderType === "market" ? "Order filled" : "Order placed"), "success");
+      if (orderType === "market") window.playOrderFilledSound?.();
       await loadTradeSnapshot();
     } catch (e) {
       toast(e?.message || "Order failed", "error");
