@@ -3,7 +3,7 @@
 //| Attach ONE instance to any chart (all symbols via inputs).       |
 //+------------------------------------------------------------------+
 #property copyright "AlphaFX"
-#property version   "1.20"
+#property version   "1.21"
 #property strict
 
 input string InpHubHost         = "127.0.0.1";
@@ -116,7 +116,7 @@ void PublishTick(string sym, int idx)
       s,
       tick.bid,
       tick.ask,
-      (long)tick.time_msc
+      (long)UtcMsFromServer(tick.time_msc)
    );
    SendLine(json);
   }
@@ -132,6 +132,22 @@ void PublishAllBars()
          PublishBars(sym, TF_NAMES[t], TF_PERIODS[t]);
      }
    lastBarPublish = TimeCurrent();
+  }
+
+//+------------------------------------------------------------------+
+long ServerUtcOffsetSec()
+  {
+   return (long)(TimeCurrent() - TimeGMT());
+  }
+
+long UtcSecFromServer(datetime serverTime)
+  {
+   return (long)serverTime - ServerUtcOffsetSec();
+  }
+
+long UtcMsFromServer(long serverMs)
+  {
+   return serverMs - ServerUtcOffsetSec() * 1000;
   }
 
 //+------------------------------------------------------------------+
@@ -158,7 +174,7 @@ void PublishBars(string sym, string tfName, ENUM_TIMEFRAMES period)
       first = false;
       json += StringFormat(
          "{\"time\":%I64d,\"open\":%.10f,\"high\":%.10f,\"low\":%.10f,\"close\":%.10f}",
-         (long)rates[i].time,
+         UtcSecFromServer(rates[i].time),
          rates[i].open,
          rates[i].high,
          rates[i].low,

@@ -93,6 +93,28 @@
     window.AlphaFXToast?.show(message, type);
   }
 
+  /** Trade table time — same timezone as chart axis (browser local from unix). */
+  function fmtTradeTime(row, field) {
+    const secKey =
+      field === "opened" || field === "created"
+        ? "opened_time"
+        : field === "closed"
+          ? "closed_time"
+          : `${field}_time`;
+    const sec = row?.[secKey];
+    if (sec != null && sec !== "" && window.AlphaFXTime?.formatLocalDateTime) {
+      return window.AlphaFXTime.formatLocalDateTime(sec);
+    }
+    const iso = row?.[field];
+    if (iso && window.AlphaFXTime?.formatLocalDateTime) {
+      const d = window.AlphaFXTime.parseUtc(iso);
+      if (d && !Number.isNaN(d.getTime())) {
+        return window.AlphaFXTime.formatLocalDateTime(Math.floor(d.getTime() / 1000));
+      }
+    }
+    return iso ?? "—";
+  }
+
   function chartBodyEl(container) {
     return container?.closest(".trade-chart-body") || container?.parentElement;
   }
@@ -1403,7 +1425,7 @@
             const fmt = (v) => (v == null || v === "" ? "—" : v);
             return `<tr>
           <td>${r.id ?? "—"}</td>
-          <td>${r.created ?? "—"}</td>
+          <td>${fmtTradeTime(r, "created")}</td>
           <td>${r.symbol ?? "—"}</td>
           <td class="${(r.side || "").toLowerCase()}">${r.side ?? "—"}</td>
           <td>${String(r.order_type || "LIMIT").toUpperCase()}</td>
@@ -1434,8 +1456,8 @@
               : "";
           return `<tr>
         <td>${r.id ?? "—"}</td>
-        <td>${r.opened ?? "—"}</td>
-        <td>${r.closed ?? "—"}</td>
+        <td>${fmtTradeTime(r, "opened")}</td>
+        <td>${fmtTradeTime(r, "closed")}</td>
         <td>${r.symbol ?? "—"}</td>
         <td class="${(r.side || "").toLowerCase()}">${r.side ?? "—"}</td>
         <td>${r.volume ?? "—"}</td>

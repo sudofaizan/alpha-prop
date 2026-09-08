@@ -110,6 +110,19 @@ def _synthetic_bars(sym: str, digits: int, limit: int, anchor: float, timeframe:
     return bars
 
 
+def _normalize_mt5_bar_times(bars: list[dict]) -> list[dict]:
+    """MT5 CopyRates uses broker server time; shift to UTC when bars are ahead of wall clock."""
+    if not bars:
+        return bars
+    now = int(time.time())
+    latest = int(bars[-1]["time"])
+    ahead = latest - now
+    if ahead < 1800:
+        return bars
+    offset = int(round(ahead / 3600.0) * 3600)
+    return [{**b, "time": int(b["time"]) - offset} for b in bars]
+
+
 @router.get("/history")
 def market_history(
     symbol: str,
@@ -132,6 +145,8 @@ def market_history(
     cached = fetch_bars(sym, tf, limit)
     if cached:
         bars, source = cached
+        if source == "mt5":
+            bars = _normalize_mt5_bar_times(bars)
         bars = _round_bars(bars[-limit:], digits)
         return {"symbol": sym, "timeframe": tf, "source": source, "bars": bars}
 

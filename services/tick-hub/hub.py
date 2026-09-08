@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import random
 import time
 from collections import deque
@@ -36,6 +37,28 @@ log = logging.getLogger("tick-hub")
 
 DEFAULT_SYMBOLS = ["EURUSD", "XAUUSD", "BTCUSD", "GBPUSD", "USDJPY"]
 MAX_BARS_PER_KEY = 500
+# Optional fixed correction (seconds to subtract from MT5 bar/tick times).
+MT5_UTC_OFFSET_SEC = int(os.environ.get("TICK_HUB_MT5_UTC_OFFSET_SEC", "0"))
+
+
+def _detect_mt5_offset_sec(latest_bar_time: int) -> int:
+    """When MT5 sends broker server time as UTC, the newest bar is ahead of wall clock."""
+    global _mt5_offset_sec
+    if MT5_UTC_OFFSET_SEC:
+        _mt5_offset_sec = MT5_UTC_OFFSET_SEC
+        return _mt5_offset_sec
+    if _mt5_offset_sec:
+        return _mt5_offset_sec
+    now = int(time.time())
+    ahead = int(latest_bar_time) - now
+    if ahead < 1800:
+        return 0
+    _mt5_offset_sec = int(round(ahead / 3600.0) * 3600)
+    return _mt5_offset_sec
+
+
+def _normalize_bar_time(bar_time: int, offset_sec: int) -> int:
+    return int(bar_time) - offset_sec if offset_sec else int(bar_time)
 
 
 def normalize_symbol(raw: str) -> str:
@@ -54,12 +77,15 @@ class TickStore:
 
     def ingest(self, tick: dict[str, Any]) -> dict[str, Any]:
         sym = normalize_symbol(str(tick["symbol"]))
+        time_ms = int(tick.get("time_ms") or time.time() * 1000)
+        if tick.get("source") == "mt5" and _mt5_offset_sec:
+            time_ms -= _mt5_offset_sec * 1000
         tick = {
             "type": "tick",
             "symbol": sym,
             "bid": float(tick["bid"]),
             "ask": float(tick["ask"]),
-            "time_ms": int(tick.get("time_ms") or time.time() * 1000),
+            "time_ms": time_ms,
             "source": tick.get("source", "mt5"),
         }
         if tick["source"] == "mt5":
@@ -110,6 +136,19 @@ class BarStore:
             return {"symbol": sym, "timeframe": tf, "count": 0}
 
         cleaned.sort(key=lambda b: b["time"])
+        offset_sec = _detect_mt5_offset_sec(cleaned[-1]["time"])
+        if offset_sec:
+            for bar in cleaned:
+                bar["time"] = _normalize_bar_time(bar["time"], offset_sec)
+            log.info(
+                "Applied MT5 UTC offset -%ds for %s %s (latest was %ds ahead)",
+                offset_sec,
+                sym,
+                tf,
+                offset_sec,
+            )
+
+        cleaned.sort(key=lambda b: b["time"])
         # De-duplicate by bar open time (keep last)
         dedup: dict[int, dict[str, Any]] = {}
         for bar in cleaned:
@@ -141,6 +180,7 @@ store = TickStore()
 bar_store = BarStore()
 # Symbols recently updated by MT5 — mock must not overwrite these
 _mt5_last: dict[str, float] = {}
+_mt5_offset_sec: int = 0
 
 
 async def broadcast(tick: dict[str, Any]) -> None:

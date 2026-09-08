@@ -24,5 +24,24 @@
     return `${days}d ago`;
   }
 
-  global.AlphaFXTime = { parseUtc, formatTimeAgo };
+  /** Format unix seconds in the browser timezone (matches chart axis labels). */
+  function formatLocalDateTime(unixSec) {
+    const sec = Number(unixSec);
+    if (!Number.isFinite(sec) || sec <= 0) return "—";
+    const d = new Date(sec * 1000);
+    if (Number.isNaN(d.getTime())) return "—";
+    const parts = new Intl.DateTimeFormat(undefined, {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).formatToParts(d);
+    const pick = (type) => parts.find((p) => p.type === type)?.value ?? "";
+    return `${pick("year")}-${pick("month")}-${pick("day")} ${pick("hour")}:${pick("minute")}:${pick("second")}`;
+  }
+
+  global.AlphaFXTime = { parseUtc, formatTimeAgo, formatLocalDateTime };
 })(typeof window !== "undefined" ? window : globalThis);
