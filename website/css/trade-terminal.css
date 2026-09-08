@@ -2007,6 +2007,43 @@ body[data-page="trade"].trade-clean-mode #trade-metrics {
   backdrop-filter: blur(4px);
 }
 
+.afx-order-grip {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0 2px;
+  margin: 0;
+  width: 14px;
+  height: 18px;
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.afx-order-grip:active {
+  cursor: grabbing;
+}
+
+.afx-order-grip-dots {
+  display: block;
+  width: 4px;
+  height: 14px;
+  background: radial-gradient(circle, #848e9c 1px, transparent 1.5px);
+  background-size: 4px 4px;
+  background-position: center;
+  opacity: 0.9;
+}
+
+.afx-position-row--draft .afx-order-grip:hover .afx-order-grip-dots,
+.afx-position-row--active .afx-order-grip .afx-order-grip-dots {
+  opacity: 1;
+  filter: brightness(1.2);
+}
+
 .afx-pos-pnl {
   font-size: 11px;
   font-weight: 600;
@@ -2240,7 +2277,7 @@ body[data-page="trade"].trade-clean-mode #trade-metrics {
   pointer-events: auto;
   touch-action: none;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
-  z-index: 13;
+  z-index: 16;
 }
 
 .afx-position-flag:active {

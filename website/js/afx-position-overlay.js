@@ -311,6 +311,16 @@
     return btn;
   }
 
+  function createDragGrip() {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "afx-order-grip";
+    btn.title = "Drag to move order price";
+    btn.setAttribute("aria-label", "Drag order price");
+    btn.innerHTML = '<span class="afx-order-grip-dots" aria-hidden="true"></span>';
+    return btn;
+  }
+
   function createPriceTag(kind) {
     const tag = document.createElement("div");
     tag.className = `afx-price-tag afx-price-tag--${kind}`;
@@ -855,6 +865,15 @@
     return view.position.tp != null ? Number(view.position.tp) : Number(view.position.price);
   }
 
+  function flagAnchorLeft(view, entryX, slot) {
+    const rowLeft = entryX + 8;
+    const rowWidth = view.row.offsetWidth || 0;
+    if (view.row.style.visibility !== "hidden" && rowWidth > 0) {
+      return rowLeft + rowWidth + 8 + slot * 28;
+    }
+    return entryX + 8 + slot * 28;
+  }
+
   function positionLevel(view, kind, price, slot) {
     if (!canSetSlTp(view.position)) {
       hideLevel(view.slFlag, view.slClose);
@@ -878,7 +897,7 @@
       hideLevel(flag, close);
       return;
     }
-    const baseLeft = entryX + 8 + slot * 24;
+    const baseLeft = flagAnchorLeft(view, entryX, slot);
     const viewId = view.row.dataset.positionId ?? "";
     const focused = viewId === activeId && activeFocus === kind;
 
@@ -886,6 +905,7 @@
     flag.style.position = "absolute";
     flag.style.top = `${y}px`;
     flag.style.left = `${baseLeft}px`;
+    flag.style.zIndex = "16";
     flag.style.transform = focused ? "translateY(-50%) scale(1.12)" : "translateY(-50%)";
 
     if (isSet || dragging) {
@@ -893,6 +913,7 @@
       close.style.position = "absolute";
       close.style.top = `${y}px`;
       close.style.left = `${baseLeft + 22}px`;
+      close.style.zIndex = "16";
       close.style.transform = "translateY(-50%)";
     } else {
       close.style.visibility = "hidden";
@@ -1287,6 +1308,17 @@
     tpClose.hidden = true;
     slClose.hidden = true;
 
+    let dragGrip = null;
+    if (isDraft) {
+      dragGrip = createDragGrip();
+      dragGrip.addEventListener("pointerdown", (e) => {
+        e.stopPropagation();
+        setActive(position.id, "entry");
+        startDrag(position.id, "entry", e);
+      });
+    }
+
+    if (dragGrip) row.append(dragGrip);
     row.append(pnlEl, volEl, positionClose);
     if (confirmBtn) row.append(confirmBtn);
     layer.appendChild(row);
@@ -1302,7 +1334,7 @@
     });
 
     row.addEventListener("pointerdown", (e) => {
-      if (e.target.closest(".afx-position-flag, .afx-position-close, .afx-position-confirm")) return;
+      if (e.target.closest(".afx-position-flag, .afx-position-close, .afx-position-confirm, .afx-order-grip")) return;
       e.stopPropagation();
       setActive(position.id, "entry");
       if (isOrderEntryDraggable(position)) startDrag(position.id, "entry", e);
@@ -1342,6 +1374,7 @@
       row,
       pnlEl,
       volEl,
+      dragGrip,
       entryMarker,
       confirmBtn,
       positionClose,
@@ -1399,8 +1432,8 @@
         if (view.entryMarker) view.entryMarker.style.visibility = "hidden";
       }
 
-      positionLevel(view, "sl", levelPrice(view, "sl"), 0);
-      positionLevel(view, "tp", levelPrice(view, "tp"), 1);
+      positionLevel(view, "tp", levelPrice(view, "tp"), 0);
+      positionLevel(view, "sl", levelPrice(view, "sl"), 1);
 
       updateRowChrome(view);
       updatePriceTags(view, view.row.dataset.positionId ?? "");
