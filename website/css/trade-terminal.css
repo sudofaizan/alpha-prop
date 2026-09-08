@@ -2109,6 +2109,15 @@ body[data-page="trade"].trade-clean-mode #trade-metrics {
   color: #f6465d;
 }
 
+.afx-position-flag--anchored {
+  z-index: 14;
+}
+
+.afx-position-close--anchored {
+  position: absolute;
+  z-index: 14;
+}
+
 .afx-position-confirm {
   appearance: none;
   border: 1px solid rgba(14, 203, 129, 0.45);
@@ -2232,11 +2241,6 @@ body[data-page="trade"].trade-clean-mode #trade-metrics {
   touch-action: none;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
   z-index: 13;
-}
-
-.afx-position-row .afx-position-flag {
-  position: static;
-  flex-shrink: 0;
 }
 
 .afx-position-flag:active {

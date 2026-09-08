@@ -743,25 +743,76 @@
   }
 
   function updateRowChrome(view) {
-    const pos = view.position;
     const id = view.row?.dataset?.positionId ?? "";
-    const canStops = canSetSlTp(pos);
-
     if (view.tpFlag) {
-      view.tpFlag.hidden = !canStops;
       view.tpFlag.classList.toggle("afx-position-flag--focused", id === activeId && activeFocus === "tp");
     }
     if (view.slFlag) {
-      view.slFlag.hidden = !canStops;
       view.slFlag.classList.toggle("afx-position-flag--focused", id === activeId && activeFocus === "sl");
     }
-    if (view.tpClose) {
-      view.tpClose.hidden = !(canStops && pos.tp != null);
-    }
-    if (view.slClose) {
-      view.slClose.hidden = !(canStops && pos.sl != null);
-    }
     updatePnlDisplay(view);
+  }
+
+  function hideLevel(flag, close) {
+    if (flag) flag.style.visibility = "hidden";
+    if (close) close.style.visibility = "hidden";
+  }
+
+  function levelPrice(view, kind) {
+    if (view.drag?.kind === kind && view.drag.previewLine) {
+      try {
+        const p = view.drag.previewLine.options?.().price;
+        if (p != null) return Number(p);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (kind === "sl") {
+      return view.position.sl != null ? Number(view.position.sl) : Number(view.position.price);
+    }
+    return view.position.tp != null ? Number(view.position.tp) : Number(view.position.price);
+  }
+
+  function positionLevel(view, kind, price, slot) {
+    if (!canSetSlTp(view.position)) {
+      hideLevel(view.slFlag, view.slClose);
+      hideLevel(view.tpFlag, view.tpClose);
+      return;
+    }
+
+    const flag = kind === "sl" ? view.slFlag : view.tpFlag;
+    const close = kind === "sl" ? view.slClose : view.tpClose;
+    const isSet = kind === "sl" ? view.position.sl != null : view.position.tp != null;
+    const dragging = view.drag?.kind === kind;
+    const y = priceToLocalY(price);
+    const frame = getPlotFrame();
+    if (y == null || y < frame.top || y > frame.top + frame.height) {
+      hideLevel(flag, close);
+      return;
+    }
+
+    const entryX = timeToLocalX(resolvePositionTime(view.position));
+    const rowLeft = entryX != null ? entryX + 8 : frame.left + 12;
+    const rowWidth = view.row.offsetWidth || 0;
+    const baseLeft = rowLeft + rowWidth + 8 + slot * 44;
+    const viewId = view.row.dataset.positionId ?? "";
+    const focused = viewId === activeId && activeFocus === kind;
+
+    flag.style.visibility = "visible";
+    flag.style.position = "absolute";
+    flag.style.top = `${y}px`;
+    flag.style.left = `${baseLeft}px`;
+    flag.style.transform = focused ? "translateY(-50%) scale(1.12)" : "translateY(-50%)";
+
+    if (isSet || dragging) {
+      close.style.visibility = "visible";
+      close.style.position = "absolute";
+      close.style.top = `${y}px`;
+      close.style.left = `${baseLeft + 22}px`;
+      close.style.transform = "translateY(-50%)";
+    } else {
+      close.style.visibility = "hidden";
+    }
   }
 
   function updateLivePnlAll() {
@@ -816,6 +867,7 @@
     }
     view.drag.previewLine?.applyOptions({ price });
     updatePriceTags(view, viewId);
+    scheduleReposition();
   }
 
   function startDrag(id, kind, event) {
@@ -999,6 +1051,10 @@
     view.row.remove();
     view.confirmBtn?.remove();
     view.entryMarker?.remove();
+    view.slFlag?.remove();
+    view.slClose?.remove();
+    view.tpFlag?.remove();
+    view.tpClose?.remove();
     view.entryPriceTag.remove();
     view.slPriceTag.remove();
     view.tpPriceTag.remove();
@@ -1147,9 +1203,13 @@
     tpClose.hidden = true;
     slClose.hidden = true;
 
-    row.append(pnlEl, volEl, positionClose, tpFlag, slFlag, tpClose, slClose);
+    row.append(pnlEl, volEl, positionClose);
     if (confirmBtn) row.append(confirmBtn);
     layer.appendChild(row);
+    layer.appendChild(slFlag);
+    layer.appendChild(slClose);
+    layer.appendChild(tpFlag);
+    layer.appendChild(tpClose);
 
     entryMarker.addEventListener("pointerdown", (e) => {
       e.stopPropagation();
@@ -1229,31 +1289,34 @@
     for (const view of views.values()) {
       const entryY = priceToLocalY(view.position.price);
       const entryX = timeToLocalX(resolvePositionTime(view.position));
-      if (
-        entryY == null ||
-        entryX == null ||
-        entryY < frame.top ||
-        entryY > frame.top + frame.height ||
-        entryX < frame.left ||
-        entryX > frame.left + frame.width
-      ) {
+      const entryInFrame =
+        entryY != null &&
+        entryX != null &&
+        entryY >= frame.top &&
+        entryY <= frame.top + frame.height &&
+        entryX >= frame.left &&
+        entryX <= frame.left + frame.width;
+
+      if (entryInFrame) {
+        const side = String(view.position.side).toLowerCase();
+        view.entryMarker.style.visibility = "visible";
+        view.entryMarker.style.left = `${entryX}px`;
+        view.entryMarker.style.top = `${entryY}px`;
+        view.entryMarker.style.transform =
+          side === "sell" ? "translate(-50%, -100%)" : "translate(-50%, 0)";
+
+        view.row.style.visibility = "visible";
+        view.row.style.display = "flex";
+        view.row.style.top = `${entryY}px`;
+        view.row.style.left = `${entryX + 8}px`;
+        view.row.style.transform = "translateY(-50%)";
+      } else {
         view.row.style.visibility = "hidden";
         if (view.entryMarker) view.entryMarker.style.visibility = "hidden";
-        continue;
       }
 
-      const side = String(view.position.side).toLowerCase();
-      view.entryMarker.style.visibility = "visible";
-      view.entryMarker.style.left = `${entryX}px`;
-      view.entryMarker.style.top = `${entryY}px`;
-      view.entryMarker.style.transform =
-        side === "sell" ? "translate(-50%, -100%)" : "translate(-50%, 0)";
-
-      view.row.style.visibility = "visible";
-      view.row.style.display = "flex";
-      view.row.style.top = `${entryY}px`;
-      view.row.style.left = `${entryX + 8}px`;
-      view.row.style.transform = "translateY(-50%)";
+      positionLevel(view, "sl", levelPrice(view, "sl"), 0);
+      positionLevel(view, "tp", levelPrice(view, "tp"), 1);
 
       updateRowChrome(view);
       updatePriceTags(view, view.row.dataset.positionId ?? "");
