@@ -2305,9 +2305,32 @@ body[data-page="trade"].trade-clean-mode #trade-metrics {
   background: rgba(246, 70, 93, 0.12);
 }
 
-.afx-stop-tag-row .afx-stop-close,
-.afx-stop-tag-row .afx-position-close {
-  display: none !important;
+.afx-stop-tag-row.is-selected .afx-stop-tag-pill {
+  border-color: rgba(234, 236, 239, 0.35);
+  box-shadow: 0 0 0 1px rgba(234, 236, 239, 0.12);
+}
+
+.afx-stop-tag-row.is-selected .afx-stop-tag-pill--sl {
+  border-color: rgba(246, 70, 93, 0.55);
+  box-shadow: 0 0 0 1px rgba(246, 70, 93, 0.2);
+}
+
+.afx-stop-tag-row.is-selected .afx-stop-tag-pill--tp {
+  border-color: rgba(14, 203, 129, 0.55);
+  box-shadow: 0 0 0 1px rgba(14, 203, 129, 0.2);
+}
+
+.afx-stop-tag-grip {
+  flex-shrink: 0;
+  cursor: grab;
+}
+
+.afx-stop-tag-grip:active {
+  cursor: grabbing;
+}
+
+.afx-stop-tag-row:not(.is-selected) .afx-stop-tag-pill {
+  cursor: pointer;
 }
 
 .afx-position-row .afx-stop-close {

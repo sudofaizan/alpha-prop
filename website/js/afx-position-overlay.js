@@ -436,9 +436,48 @@
       kind === "sl" ? "Remove stop loss" : "Remove take profit",
     );
 
-    row.append(pill, close);
+    const grip = createDragGrip();
+    grip.className = "afx-order-grip afx-stop-tag-grip";
+    grip.hidden = true;
+
+    row.append(grip, pill, close);
     layer.appendChild(row);
-    return { row, pill, kindEl, priceEl, pnlEl, close };
+    return { row, pill, kindEl, priceEl, pnlEl, grip, close };
+  }
+
+  function isStopSet(view, kind) {
+    return kind === "sl" ? view.position.sl != null : view.position.tp != null;
+  }
+
+  function isStopSelected(view, kind) {
+    const viewId = view.row?.dataset?.positionId ?? "";
+    return viewId === activeId && activeFocus === kind && isStopSet(view, kind);
+  }
+
+  function handleStopFlagPointerDown(view, kind, event) {
+    if (!canSetSlTp(view.position)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const id = view.row.dataset.positionId ?? "";
+    setActive(id, kind);
+    if (!isStopSet(view, kind)) startDrag(id, kind, event);
+  }
+
+  function handleStopTagSelect(view, kind, event) {
+    if (!canSetSlTp(view.position) || !isStopSet(view, kind)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setActive(view.row.dataset.positionId ?? "", kind);
+    scheduleReposition();
+  }
+
+  function handleStopTagGripPointerDown(view, kind, event) {
+    if (!canSetSlTp(view.position) || !isStopSet(view, kind)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const id = view.row.dataset.positionId ?? "";
+    setActive(id, kind);
+    startDrag(id, kind, event);
   }
 
   function lineWidthFor(viewId, kind) {
@@ -958,6 +997,11 @@
     tagRow.style.left = `${flagAnchorOnLine(entryX, slot)}px`;
     tagRow.style.transform = "translateY(-50%)";
     tagRow.style.zIndex = "17";
+
+    const grip = isSl ? view.slGrip : view.tpGrip;
+    const selected = isStopSelected(view, kind);
+    if (grip) grip.hidden = !selected;
+    tagRow.classList.toggle("is-selected", selected);
   }
 
   function formatOrderTypeLabel(position) {
@@ -1050,6 +1094,14 @@
     if (view.slFlag) {
       view.slFlag.classList.toggle("afx-position-flag--focused", id === activeId && activeFocus === "sl");
     }
+    if (view.slTagRow) {
+      view.slTagRow.classList.toggle("is-selected", isStopSelected(view, "sl"));
+      if (view.slGrip) view.slGrip.hidden = !isStopSelected(view, "sl");
+    }
+    if (view.tpTagRow) {
+      view.tpTagRow.classList.toggle("is-selected", isStopSelected(view, "tp"));
+      if (view.tpGrip) view.tpGrip.hidden = !isStopSelected(view, "tp");
+    }
     updatePnlDisplay(view);
   }
 
@@ -1095,8 +1147,12 @@
     }
 
     const flag = kind === "sl" ? view.slFlag : view.tpFlag;
-    const isSet = kind === "sl" ? view.position.sl != null : view.position.tp != null;
+    const isSet = isStopSet(view, kind);
     const dragging = view.drag?.kind === kind;
+    if (isSet && !dragging) {
+      hideLevel(flag, null);
+      return;
+    }
     const y = priceToLocalY(price);
     const frame = getPlotFrame();
     if (y == null || y < frame.top || y > frame.top + frame.height) {
@@ -1413,7 +1469,7 @@
     const target = event.target;
     if (
       target.closest(
-        ".afx-position-label, .afx-entry-marker, .afx-position-flag, .afx-position-close, .afx-position-confirm, .afx-position-row, .afx-order-grip, .afx-price-tag, .afx-trade-widget, .trade-ticket",
+        ".afx-position-label, .afx-entry-marker, .afx-position-flag, .afx-position-close, .afx-position-confirm, .afx-position-row, .afx-order-grip, .afx-price-tag, .afx-stop-tag-row, .afx-trade-widget, .trade-ticket",
       )
     ) {
       return;
@@ -1637,16 +1693,31 @@
     });
 
     slFlag.addEventListener("pointerdown", (e) => {
-      if (!canSetSlTp(position)) return;
-      e.stopPropagation();
-      setActive(position.id, "sl");
-      startDrag(position.id, "sl", e);
+      const v = views.get(String(position.id));
+      if (v) handleStopFlagPointerDown(v, "sl", e);
     });
     tpFlag.addEventListener("pointerdown", (e) => {
-      if (!canSetSlTp(position)) return;
-      e.stopPropagation();
-      setActive(position.id, "tp");
-      startDrag(position.id, "tp", e);
+      const v = views.get(String(position.id));
+      if (v) handleStopFlagPointerDown(v, "tp", e);
+    });
+
+    slTag.pill.addEventListener("pointerdown", (e) => {
+      if (e.target.closest(".afx-stop-tag-remove")) return;
+      const v = views.get(String(position.id));
+      if (v) handleStopTagSelect(v, "sl", e);
+    });
+    tpTag.pill.addEventListener("pointerdown", (e) => {
+      if (e.target.closest(".afx-stop-tag-remove")) return;
+      const v = views.get(String(position.id));
+      if (v) handleStopTagSelect(v, "tp", e);
+    });
+    slTag.grip.addEventListener("pointerdown", (e) => {
+      const v = views.get(String(position.id));
+      if (v) handleStopTagGripPointerDown(v, "sl", e);
+    });
+    tpTag.grip.addEventListener("pointerdown", (e) => {
+      const v = views.get(String(position.id));
+      if (v) handleStopTagGripPointerDown(v, "tp", e);
     });
 
     slClose.addEventListener("click", (e) => {
@@ -1679,11 +1750,13 @@
       slTagRow: slTag.row,
       slPriceEl: slTag.priceEl,
       slPnlEl: slTag.pnlEl,
+      slGrip: slTag.grip,
       tpFlag,
       tpClose,
       tpTagRow: tpTag.row,
       tpPriceEl: tpTag.priceEl,
       tpPnlEl: tpTag.pnlEl,
+      tpGrip: tpTag.grip,
       entryPriceTag,
       drag: null,
     };
@@ -1698,7 +1771,7 @@
     views.set(position.id, view);
     updateRowChrome(view);
     scheduleReposition();
-    setActive(position.id, "entry");
+    setActive(null);
   }
 
   function repositionAll() {
