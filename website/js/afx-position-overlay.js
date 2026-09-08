@@ -402,19 +402,43 @@
     return tag;
   }
 
+  function createStopTagRemoveButton(title) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "afx-stop-tag-remove";
+    btn.textContent = "×";
+    btn.title = title;
+    btn.setAttribute("aria-label", title);
+    return btn;
+  }
+
   function createStopTagRow(kind) {
     const row = document.createElement("div");
     row.className = `afx-stop-tag-row afx-stop-tag-row--${kind}`;
     row.hidden = true;
-    const label = document.createElement("span");
-    label.className = `afx-price-tag afx-price-tag--${kind}`;
-    const close = createCloseButton(
+
+    const pill = document.createElement("span");
+    pill.className = `afx-stop-tag-pill afx-stop-tag-pill--${kind}`;
+
+    const kindEl = document.createElement("span");
+    kindEl.className = "afx-stop-tag-kind";
+    kindEl.textContent = kind === "sl" ? "SL" : "TP";
+
+    const priceEl = document.createElement("span");
+    priceEl.className = "afx-stop-tag-price";
+
+    const pnlEl = document.createElement("span");
+    pnlEl.className = "afx-stop-tag-pnl";
+
+    pill.append(kindEl, priceEl, pnlEl);
+
+    const close = createStopTagRemoveButton(
       kind === "sl" ? "Remove stop loss" : "Remove take profit",
-      "afx-stop-close",
     );
-    row.append(label, close);
+
+    row.append(pill, close);
     layer.appendChild(row);
-    return { row, label, close };
+    return { row, pill, kindEl, priceEl, pnlEl, close };
   }
 
   function lineWidthFor(viewId, kind) {
@@ -889,8 +913,9 @@
   function positionStopTagRow(view, kind, slot) {
     const isSl = kind === "sl";
     const tagRow = isSl ? view.slTagRow : view.tpTagRow;
-    const label = isSl ? view.slPriceTag : view.tpPriceTag;
-    if (!tagRow || !label) return;
+    const priceEl = isSl ? view.slPriceEl : view.tpPriceEl;
+    const pnlEl = isSl ? view.slPnlEl : view.tpPnlEl;
+    if (!tagRow || !priceEl || !pnlEl) return;
 
     const isSet = isSl ? view.position.sl != null : view.position.tp != null;
     const dragging = view.drag?.kind === kind;
@@ -919,8 +944,13 @@
     }
 
     const sym = view.position.symbol;
-    const prefix = isSl ? "SL" : "TP";
-    label.textContent = `${prefix} ${fmtPrice(price, sym)}`;
+    priceEl.textContent = fmtPrice(price, sym);
+    const pnl = pnlAtPrice(view.position, price) ?? 0;
+    pnlEl.textContent = fmtPnlDisplay(pnl);
+    pnlEl.classList.remove("positive", "negative");
+    const cls = pnlClass(pnl);
+    if (cls) pnlEl.classList.add(cls);
+
     tagRow.hidden = false;
     tagRow.style.visibility = "visible";
     tagRow.style.position = "absolute";
@@ -1647,11 +1677,13 @@
       slFlag,
       slClose,
       slTagRow: slTag.row,
-      slPriceTag: slTag.label,
+      slPriceEl: slTag.priceEl,
+      slPnlEl: slTag.pnlEl,
       tpFlag,
       tpClose,
       tpTagRow: tpTag.row,
-      tpPriceTag: tpTag.label,
+      tpPriceEl: tpTag.priceEl,
+      tpPnlEl: tpTag.pnlEl,
       entryPriceTag,
       drag: null,
     };

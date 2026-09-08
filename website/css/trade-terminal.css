@@ -2237,47 +2237,77 @@ body[data-page="trade"].trade-clean-mode #trade-metrics {
   position: absolute;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   pointer-events: auto;
   z-index: 17;
 }
 
-.afx-stop-tag-row .afx-price-tag {
-  position: static;
-  transform: none;
-  pointer-events: none;
-}
-
-.afx-stop-tag-row .afx-stop-close {
-  position: static;
-  transform: none;
-  flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  font-size: 14px;
-  line-height: 18px;
-  text-align: center;
+.afx-stop-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
   border-radius: 4px;
-  background: rgba(11, 14, 17, 0.85);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  background: rgba(30, 35, 41, 0.92);
+  border: 1px solid #2b3139;
+  color: #eaecef;
+  line-height: 1.2;
 }
 
-.afx-position-close.afx-stop-close {
-  position: absolute;
-  z-index: 17;
+.afx-stop-tag-pill--sl {
+  color: #f0b4bd;
+  border-color: rgba(246, 70, 93, 0.35);
+}
+
+.afx-stop-tag-pill--tp {
+  color: #9aebc8;
+  border-color: rgba(14, 203, 129, 0.35);
+}
+
+.afx-stop-tag-kind {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.afx-stop-tag-pnl.positive {
+  color: #0ecb81;
+}
+
+.afx-stop-tag-pnl.negative {
+  color: #f6465d;
+}
+
+.afx-stop-tag-remove {
+  appearance: none;
+  border: 1px solid #2b3139;
+  background: rgba(11, 14, 17, 0.92);
+  color: #848e9c;
   font-size: 14px;
   font-weight: 600;
-  width: 18px;
-  height: 18px;
-  color: #848e9c;
-  background: rgba(11, 14, 17, 0.72);
+  line-height: 1;
+  width: 20px;
+  height: 20px;
+  padding: 0;
   border-radius: 4px;
-  line-height: 18px;
-  text-align: center;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+  flex-shrink: 0;
 }
 
-.afx-position-close.afx-stop-close:hover {
+.afx-stop-tag-remove:hover {
   color: #f6465d;
+  border-color: rgba(246, 70, 93, 0.45);
   background: rgba(246, 70, 93, 0.12);
+}
+
+.afx-stop-tag-row .afx-stop-close,
+.afx-stop-tag-row .afx-position-close {
+  display: none !important;
 }
 
 .afx-position-row .afx-stop-close {
