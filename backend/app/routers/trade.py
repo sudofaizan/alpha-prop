@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User
-from app.schemas.trade import CancelPendingRequest, ClosePositionRequest, OrderResponse, PlaceOrderRequest, UpdateStopsRequest
+from app.schemas.trade import CancelPendingRequest, ClosePositionRequest, OrderResponse, PlaceOrderRequest, UpdatePendingOrderRequest, UpdateStopsRequest
 from app.services.accounts import account_to_summary, dashboard_for_user, get_account, list_user_accounts
 from app.services import sim_engine
 
@@ -151,6 +151,29 @@ def cancel_pending_order(
     """Cancel a pending limit or stop order."""
     trade = sim_engine.cancel_pending_order(db, user.id, body.account_id, trade_id)
     return OrderResponse(trade_id=trade.id, message=f"Order #{trade.id} cancelled")
+
+
+@router.patch("/orders/pending/{trade_id}", response_model=OrderResponse)
+def update_pending_order(
+    trade_id: int,
+    body: UpdatePendingOrderRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update price (and optional stops) on a pending limit/stop order."""
+    fields = body.model_fields_set
+    trade = sim_engine.update_pending_order(
+        db,
+        user.id,
+        body.account_id,
+        trade_id,
+        body.price,
+        body.stop_loss,
+        body.take_profit,
+        set_stop_loss="stop_loss" in fields,
+        set_take_profit="take_profit" in fields,
+    )
+    return OrderResponse(trade_id=trade.id, message=f"Order #{trade.id} updated @ {trade.entry_price}")
 
 
 @router.get("/positions")

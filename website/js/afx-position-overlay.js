@@ -81,10 +81,9 @@
   }
 
   function isOrderEntryDraggable(position) {
-    return (
-      String(position.orderKind).toLowerCase() !== "market" &&
-      position.status === "draft"
-    );
+    const kind = String(position.orderKind || "limit").toLowerCase();
+    if (kind === "market") return false;
+    return position.status === "draft" || position.status === "pending";
   }
 
   function canSetSlTp(position) {
@@ -838,7 +837,8 @@
     const pnl = livePnlFor(view.position);
     view.pnlEl.textContent = fmtPnlDisplay(pnl);
     view.pnlEl.classList.remove("positive", "negative");
-    view.pnlEl.classList.add(pnlClass(pnl));
+    const cls = pnlClass(pnl);
+    if (cls) view.pnlEl.classList.add(cls);
     if (view.volEl) {
       view.volEl.textContent = Number(view.position.volume).toFixed(2);
     }
@@ -1084,6 +1084,29 @@
     }
   }
 
+  async function persistPendingPrice(view) {
+    const id = view.position.id;
+    if (isDraftId(id)) return;
+    const accountId = ctx().accountId;
+    if (!accountId || !window.AlphaFXApi) return;
+    try {
+      await window.AlphaFXApi.request(`/api/v1/trade/orders/pending/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          account_id: accountId,
+          price: view.position.price,
+        }),
+      });
+      const pending = ctx().pending || [];
+      const row = pending.find((p) => String(p.id) === String(id));
+      if (row) row.price = view.position.price;
+      toast(`Order · ${fmtPrice(view.position.price, view.position.symbol)}`);
+    } catch (e) {
+      toast(e?.message || "Could not update order", "error");
+      sync();
+    }
+  }
+
   function onPointerUp(event) {
     let anyDrag = false;
     for (const view of views.values()) {
@@ -1100,6 +1123,8 @@
           view.position.price = originalPrice;
           view.entryLine.applyOptions({ price: originalPrice });
           toast(error, "error");
+        } else if (view.position.status === "pending" && !isDraftId(viewId)) {
+          persistPendingPrice(view);
         }
         view.drag = null;
         applyLineStyles();
@@ -1324,12 +1349,12 @@
     slClose.hidden = true;
 
     let dragGrip = null;
-    if (isDraft) {
+    if (isDraft || isPending) {
       dragGrip = createDragGrip();
       dragGrip.addEventListener("pointerdown", (e) => {
         e.stopPropagation();
         setActive(position.id, "entry");
-        startDrag(position.id, "entry", e);
+        if (isOrderEntryDraggable(position)) startDrag(position.id, "entry", e);
       });
     }
 

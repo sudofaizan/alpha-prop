@@ -2021,12 +2021,21 @@ body[data-page="trade"].trade-clean-mode #trade-metrics {
   touch-action: none;
 }
 
-.afx-position-row--draft:active {
+.afx-position-row--pending {
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+
+.afx-position-row--draft:active,
+.afx-position-row--pending:active {
   cursor: grabbing;
 }
 
 .afx-position-row--draft .afx-pos-pnl,
-.afx-position-row--draft .afx-pos-vol {
+.afx-position-row--draft .afx-pos-vol,
+.afx-position-row--pending .afx-pos-pnl,
+.afx-position-row--pending .afx-pos-vol {
   pointer-events: none;
 }
 

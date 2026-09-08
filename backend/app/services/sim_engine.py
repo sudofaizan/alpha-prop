@@ -462,6 +462,56 @@ def cancel_pending_order(db: Session, user_id: int, account_id: int, trade_id: i
     return trade
 
 
+def update_pending_order(
+    db: Session,
+    user_id: int,
+    account_id: int,
+    trade_id: int,
+    price: float,
+    stop_loss: float | None = None,
+    take_profit: float | None = None,
+    *,
+    set_stop_loss: bool = False,
+    set_take_profit: bool = False,
+) -> SimTrade:
+    account = _require_account(db, user_id, account_id)
+    trade = (
+        db.query(SimTrade)
+        .filter(SimTrade.id == trade_id, SimTrade.account_id == account.id, SimTrade.status == "pending")
+        .one_or_none()
+    )
+    if not trade:
+        raise HTTPException(status_code=404, detail="Pending order not found")
+
+    side_norm = trade.side.upper()
+    trigger = _round_price(trade.symbol, price)
+    sl = trade.stop_loss
+    tp = trade.take_profit
+    if set_stop_loss:
+        sl = _round_price(trade.symbol, stop_loss) if stop_loss is not None else None
+    if set_take_profit:
+        tp = _round_price(trade.symbol, take_profit) if take_profit is not None else None
+    _validate_stops(side_norm, trigger, trade.symbol, sl, tp)
+
+    margin = _margin_required(trade.symbol, trade.volume, trigger)
+    account = refresh_account_metrics(db, account)
+    released = float(trade.margin_used or 0)
+    free_margin = account.equity - _reserved_margin(db, account.id) + released
+    if margin > free_margin:
+        raise HTTPException(status_code=400, detail="Insufficient free margin")
+
+    trade.entry_price = trigger
+    trade.margin_used = margin
+    if set_stop_loss:
+        trade.stop_loss = sl
+    if set_take_profit:
+        trade.take_profit = tp
+    db.add(trade)
+    db.commit()
+    db.refresh(trade)
+    return trade
+
+
 def open_market_order(
     db: Session,
     user_id: int,
