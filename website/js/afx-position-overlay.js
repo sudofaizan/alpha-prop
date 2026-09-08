@@ -117,17 +117,61 @@
     return getPlotFrame().top + y;
   }
 
-  function resolvePositionTime(position) {
-    if (position.time != null) return position.time;
-    if (position.opened_time != null && ctx().snapBarTime) {
-      return ctx().snapBarTime(position.opened_time);
+  function resolveBarTime(unixSec) {
+    if (unixSec == null) return ctx().fallbackTime?.() ?? null;
+    const bars = ctx().barBuffer || [];
+    const step = ctx().tfStep?.(ctx().activeTimeframe) || 60;
+    const snapped = ctx().snapBarTime?.(unixSec) ?? unixSec;
+
+    if (!bars.length) return snapped;
+
+    const last = bars[bars.length - 1];
+
+    // Opened on the current forming candle → anchor to that bar exactly
+    if (snapped >= last.time && snapped < last.time + step) {
+      return last.time;
     }
-    return ctx().fallbackTime?.() ?? null;
+
+    // Exact bar match in loaded history
+    for (let i = bars.length - 1; i >= 0; i--) {
+      if (bars[i].time === snapped) return bars[i].time;
+    }
+
+    // Nearest loaded bar (scroll/zoom edge cases)
+    let best = last.time;
+    let bestDist = Math.abs(last.time - snapped);
+    for (const b of bars) {
+      const d = Math.abs(b.time - snapped);
+      if (d < bestDist) {
+        bestDist = d;
+        best = b.time;
+      }
+    }
+    return best;
+  }
+
+  function resolvePositionTime(position) {
+    if (position.opened_time != null) {
+      return resolveBarTime(position.opened_time);
+    }
+    if (position.time != null) {
+      return resolveBarTime(position.time);
+    }
+    return resolveBarTime(Math.floor(Date.now() / 1000));
   }
 
   function timeToLocalX(time) {
     if (!chart || time == null) return null;
-    const x = chart.timeScale().timeToCoordinate(time);
+    const ts = chart.timeScale();
+    let x = ts.timeToCoordinate(time);
+    // Fallback: map via bar index when time is in buffer but not yet indexed
+    if (x == null) {
+      const bars = ctx().barBuffer || [];
+      const idx = bars.findIndex((b) => b.time === time);
+      if (idx >= 0) {
+        x = ts.logicalToCoordinate(idx);
+      }
+    }
     if (x == null) return null;
     return getPlotFrame().left + x;
   }
@@ -685,6 +729,7 @@
 
   function openPosition(position) {
     if (views.has(position.id)) return;
+    position = { ...position, time: resolvePositionTime(position) };
     const side = String(position.side).toLowerCase();
     const sideColor = SIDE_COLOR[side] || SIDE_COLOR.buy;
     const isDraft = position.status === "draft";
@@ -859,7 +904,7 @@
   }
 
   function positionTime(pos) {
-    if (pos.opened_time != null && ctx().snapBarTime) return ctx().snapBarTime(pos.opened_time);
+    if (pos.opened_time != null) return resolveBarTime(pos.opened_time);
     return ctx().fallbackTime?.() ?? null;
   }
 
@@ -905,7 +950,7 @@
       const mapped = mapOpen(pos);
       const existing = views.get(mapped.id);
       if (existing) {
-        existing.position = { ...existing.position, ...mapped };
+        existing.position = { ...existing.position, ...mapped, time: resolvePositionTime({ ...existing.position, ...mapped }) };
         existing.entryLine.applyOptions({ price: mapped.price });
         existing.label.textContent = formatPositionLabel(existing.position);
         if (mapped.sl != null) {
@@ -938,7 +983,7 @@
       const mapped = mapPending(p);
       const existing = views.get(mapped.id);
       if (existing) {
-        existing.position = { ...existing.position, ...mapped };
+        existing.position = { ...existing.position, ...mapped, time: resolvePositionTime({ ...existing.position, ...mapped }) };
         existing.entryLine.applyOptions({ price: mapped.price });
         existing.label.textContent = formatPositionLabel(existing.position);
       } else {
@@ -971,7 +1016,7 @@
       orderKind: String(orderKind).toLowerCase(),
       status: "draft",
       symbol: sym,
-      time: ctx().snapBarTime?.(Math.floor(Date.now() / 1000)) ?? ctx().fallbackTime?.(),
+      opened_time: Math.floor(Date.now() / 1000),
     });
     return id;
   }
@@ -1025,5 +1070,6 @@
     clear,
     openDraft,
     setActive,
+    reposition: scheduleReposition,
   };
 })();

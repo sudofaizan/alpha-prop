@@ -141,6 +141,7 @@
     requestAnimationFrame(() => {
       liveBarQueued = false;
       patchFormingBar(tick);
+      window.AlphaFXChartPositions?.layoutAll?.();
     });
   }
 
@@ -263,6 +264,7 @@
         return (Number(tick.bid) + Number(tick.ask)) / 2;
       },
       snapBarTime: (unixSec) => barBucket(Number(unixSec) * 1000, activeTimeframe),
+      tfStep,
       activeTimeframe,
       syncTicketStops: syncTicketStopsFromChart,
       isMt5Mobile: () => document.body.classList.contains("trade-mt5-mode"),

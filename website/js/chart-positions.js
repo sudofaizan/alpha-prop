@@ -509,6 +509,10 @@
   }
 
   function layoutAll() {
+    if (document.body.classList.contains("trade-clean-mode")) {
+      window.AlphaFXPositionOverlay?.reposition?.();
+      return;
+    }
     for (const o of overlays.values()) layoutOverlay(o);
   }
 
