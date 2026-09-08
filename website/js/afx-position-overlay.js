@@ -137,24 +137,18 @@
 
   function resolveBarTime(unixSec) {
     const sec = normalizeUnixSec(unixSec);
-    if (sec == null) return ctx().fallbackTime?.() ?? null;
+    if (sec == null) return null;
 
     const bars = ctx().barBuffer || [];
     const step = ctx().tfStep?.(ctx().activeTimeframe) || 60;
-    const nowSec = Math.floor(Date.now() / 1000);
 
     if (!bars.length) {
-      return ctx().snapBarTime?.(sec) ?? sec;
+      return ctx().snapBarTime?.(sec) ?? null;
     }
 
-    const last = bars[bars.length - 1];
+    const first = bars[0].time;
+    const last = bars[bars.length - 1].time;
 
-    // Live fill within the current candle window → snap to forming bar
-    if (nowSec - sec <= step * 2) {
-      return last.time;
-    }
-
-    // Which bar was open at this exact second?
     for (let i = bars.length - 1; i >= 0; i--) {
       const b = bars[i];
       if (sec >= b.time && sec < b.time + step) {
@@ -162,30 +156,31 @@
       }
     }
 
-    const snapped = ctx().snapBarTime?.(sec) ?? sec;
-    for (let i = bars.length - 1; i >= 0; i--) {
-      if (bars[i].time === snapped) return bars[i].time;
+    // Outside loaded history — don't extrapolate to wrong candles
+    if (sec < first || sec >= last + step) {
+      return null;
     }
 
-    if (snapped >= last.time && snapped < last.time + step) {
-      return last.time;
-    }
-
-    return snapped;
+    return null;
   }
 
   function resolvePositionTime(position) {
     const id = String(position.id ?? "");
     const anchor = fillAnchors.get(id);
-    if (anchor?.barTime != null) return anchor.barTime;
+    if (anchor?.barTime != null) {
+      const bars = ctx().barBuffer || [];
+      if (bars.some((b) => b.time === anchor.barTime)) return anchor.barTime;
+    }
 
     if (position.opened_time != null) {
-      return resolveBarTime(position.opened_time);
+      const t = resolveBarTime(position.opened_time);
+      if (t != null) return t;
     }
     if (position.time != null) {
-      return resolveBarTime(position.time);
+      const t = resolveBarTime(position.time);
+      if (t != null) return t;
     }
-    return ctx().fallbackTime?.() ?? resolveBarTime(nowSec());
+    return ctx().fallbackTime?.() ?? null;
   }
 
   function nowSec() {
@@ -207,34 +202,25 @@
 
   function timeToLocalX(time) {
     if (!chart || time == null) return null;
-    const ts = chart.timeScale();
     const bars = ctx().barBuffer || [];
-    let x = null;
-
     const idx = bars.findIndex((b) => b.time === time);
-    if (idx >= 0) {
-      try {
-        x = ts.logicalToCoordinate(idx);
-      } catch {
-        /* fallback below */
-      }
+    if (idx < 0) return null;
+
+    const ts = chart.timeScale();
+    try {
+      const x = ts.logicalToCoordinate(idx);
+      if (x != null) return getPlotFrame().left + x;
+    } catch {
+      /* fallback below */
     }
 
-    if (x == null) {
-      try {
-        const logical = ts.timeToLogical?.(time);
-        if (logical != null) x = ts.logicalToCoordinate(logical);
-      } catch {
-        /* fallback below */
-      }
+    try {
+      const x = ts.timeToCoordinate(time);
+      if (x != null) return getPlotFrame().left + x;
+    } catch {
+      /* ignore */
     }
-
-    if (x == null) {
-      x = ts.timeToCoordinate(time);
-    }
-
-    if (x == null) return null;
-    return getPlotFrame().left + x;
+    return null;
   }
 
   function clientYToPrice(clientY) {
@@ -479,6 +465,10 @@
       const y1 = priceToLocalY(entry.price);
       const x2 = timeToLocalX(closeMarkerBarTime(close));
       const y2 = priceToLocalY(close.price);
+      if (x1 == null || y1 == null || x2 == null || y2 == null) {
+        conn.line.style.visibility = "hidden";
+        continue;
+      }
       const entryVisible = markerPointVisible(x1, y1, frame);
       const closeVisible = markerPointVisible(x2, y2, frame);
       if (!entryVisible && !closeVisible) {
@@ -496,13 +486,19 @@
   }
 
   function resolveCloseBarTime(closedTime, anchor) {
-    if (anchor?.barTime != null) return anchor.barTime;
+    if (anchor?.barTime != null) {
+      const bars = ctx().barBuffer || [];
+      if (bars.some((b) => b.time === anchor.barTime)) return anchor.barTime;
+    }
     if (closedTime != null) return resolveBarTime(closedTime);
-    return ctx().fallbackTime?.() ?? null;
+    return null;
   }
 
   function markerBarTime(marker) {
-    if (marker.unixTime != null) return resolveBarTime(marker.unixTime);
+    if (marker.unixTime != null) {
+      const t = resolveBarTime(marker.unixTime);
+      if (t != null) return t;
+    }
     return marker.barTime ?? null;
   }
 
@@ -611,9 +607,11 @@
       }
       const x = timeToLocalX(markerBarTime(marker));
       const y = priceToLocalY(marker.price);
+      if (x == null || y == null) {
+        marker.el.style.visibility = "hidden";
+        continue;
+      }
       if (
-        x == null ||
-        y == null ||
         y < frame.top ||
         y > frame.top + frame.height ||
         x < frame.left ||
@@ -675,6 +673,7 @@
       const openedTime = trade.opened_time ?? null;
       const closedTime = trade.closed_time ?? null;
       if (entry == null || exit == null || openedTime == null || closedTime == null) continue;
+      if (resolveBarTime(openedTime) == null || resolveBarTime(closedTime) == null) continue;
 
       historyIds.add(id);
       upsertClosedEntryMarker({
@@ -721,9 +720,11 @@
       }
       const x = timeToLocalX(closeMarkerBarTime(marker));
       const y = priceToLocalY(marker.price);
+      if (x == null || y == null) {
+        marker.el.style.visibility = "hidden";
+        continue;
+      }
       if (
-        x == null ||
-        y == null ||
         y < frame.top ||
         y > frame.top + frame.height ||
         x < frame.left ||
@@ -873,9 +874,11 @@
     }
 
     const entryX = timeToLocalX(resolvePositionTime(view.position));
-    const rowLeft = entryX != null ? entryX + 8 : frame.left + 12;
-    const rowWidth = view.row.offsetWidth || 0;
-    const baseLeft = rowLeft + rowWidth + 8 + slot * 44;
+    if (entryX == null) {
+      hideLevel(flag, close);
+      return;
+    }
+    const baseLeft = entryX + 8 + slot * 24;
     const viewId = view.row.dataset.positionId ?? "";
     const focused = viewId === activeId && activeFocus === kind;
 
