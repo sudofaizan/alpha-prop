@@ -21,6 +21,13 @@
   let rangeSubscribed = false;
   /** @type {Map<string, { unixSec: number, barTime: number }>} */
   const fillAnchors = new Map();
+  /** @type {Map<string, { side: string, exit: number, unixSec: number, barTime: number, symbol: string }>} */
+  const closeAnchors = new Map();
+  /** @type {Map<string, { id: string, side: string, price: number, barTime: number, symbol: string, el: HTMLElement }>} */
+  const closeMarkers = new Map();
+  /** @type {Map<string, { id: string, side: string, price: number, barTime: number, symbol: string, el: HTMLElement }>} */
+  const closedEntryMarkers = new Map();
+  const trackedCloseIds = new Set();
 
   function ctx() {
     return getContext?.() || {};
@@ -292,18 +299,16 @@
     icon.className = "afx-flag-icon";
     icon.setAttribute("aria-hidden", "true");
     btn.appendChild(icon);
-    layer.appendChild(btn);
     return btn;
   }
 
-  function createCloseButton(title) {
+  function createCloseButton(title, extraClass) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "afx-position-close";
+    btn.className = `afx-position-close${extraClass ? ` ${extraClass}` : ""}`;
     btn.textContent = "×";
     btn.title = title;
     btn.setAttribute("aria-label", title);
-    layer.appendChild(btn);
     return btn;
   }
 
@@ -347,12 +352,12 @@
         view.drag.previewLine.applyOptions({ lineWidth: lineWidthFor(id, view.drag.kind) });
       }
       view.row.classList.toggle("afx-position-row--active", id === activeId);
-      view.label.classList.toggle("afx-position-label--focused", id === activeId && activeFocus === "entry");
       view.entryMarker?.classList.toggle("afx-entry-marker--focused", id === activeId && activeFocus === "entry");
-      view.slFlag.classList.toggle("afx-position-flag--focused", id === activeId && activeFocus === "sl");
-      view.tpFlag.classList.toggle("afx-position-flag--focused", id === activeId && activeFocus === "tp");
     }
-    for (const [id, view] of views) updatePriceTags(view, id);
+    for (const [id, view] of views) {
+      updateRowChrome(view);
+      updatePriceTags(view, id);
+    }
   }
 
   function chartCenterX(frame) {
@@ -379,6 +384,203 @@
     el.setAttribute("aria-hidden", "true");
     layer.appendChild(el);
     return el;
+  }
+
+  function createCloseMarker(positionSide) {
+    const side = String(positionSide).toLowerCase();
+    const el = document.createElement("div");
+    el.className = `afx-close-marker afx-close-marker--from-${side}`;
+    el.setAttribute("aria-hidden", "true");
+    el.title = side === "buy" ? "Buy closed" : "Sell closed";
+    layer.appendChild(el);
+    return el;
+  }
+
+  function closeMarkerTransform(positionSide) {
+    const side = String(positionSide).toLowerCase();
+    // Buy close → red down arrow; sell close → green up arrow
+    return side === "buy" ? "translate(-50%, -100%)" : "translate(-50%, 0)";
+  }
+
+  function resolveCloseBarTime(closedTime, anchor) {
+    if (anchor?.barTime != null) return anchor.barTime;
+    if (closedTime != null) return resolveBarTime(closedTime);
+    return ctx().fallbackTime?.() ?? null;
+  }
+
+  function upsertCloseMarker({ id, side, price, barTime, symbol }) {
+    const tradeId = String(id);
+    if (price == null || barTime == null) return;
+    const sym = symbol || ctx().activeSymbol;
+    let marker = closeMarkers.get(tradeId);
+    if (!marker) {
+      marker = {
+        id: tradeId,
+        side: String(side).toLowerCase(),
+        price: Number(price),
+        barTime,
+        symbol: sym,
+        el: createCloseMarker(side),
+      };
+      closeMarkers.set(tradeId, marker);
+    } else {
+      marker.side = String(side).toLowerCase();
+      marker.price = Number(price);
+      marker.barTime = barTime;
+      marker.symbol = sym;
+      marker.el.className = `afx-close-marker afx-close-marker--from-${marker.side}`;
+      marker.el.title = marker.side === "buy" ? "Buy closed" : "Sell closed";
+    }
+    trackedCloseIds.add(tradeId);
+    scheduleReposition();
+  }
+
+  function removeCloseMarker(id) {
+    const marker = closeMarkers.get(String(id));
+    if (!marker) return;
+    marker.el.remove();
+    closeMarkers.delete(String(id));
+  }
+
+  function removeClosedEntryMarker(id) {
+    const marker = closedEntryMarkers.get(String(id));
+    if (!marker) return;
+    marker.el.remove();
+    closedEntryMarkers.delete(String(id));
+  }
+
+  function persistClosedEntryMarker(id, view) {
+    if (!view?.entryMarker || view.position.status !== "open") return;
+    const tradeId = String(id);
+    if (closedEntryMarkers.has(tradeId)) return;
+    const side = String(view.position.side).toLowerCase();
+    closedEntryMarkers.set(tradeId, {
+      id: tradeId,
+      side,
+      price: Number(view.position.price),
+      barTime: resolvePositionTime(view.position),
+      symbol: view.position.symbol || ctx().activeSymbol,
+      el: view.entryMarker,
+    });
+    view.entryMarker = null;
+  }
+
+  function repositionClosedEntryMarkers() {
+    const frame = getPlotFrame();
+    const sym = ctx().activeSymbol;
+    for (const marker of closedEntryMarkers.values()) {
+      if (marker.symbol !== sym) {
+        marker.el.style.visibility = "hidden";
+        continue;
+      }
+      const x = timeToLocalX(marker.barTime);
+      const y = priceToLocalY(marker.price);
+      if (
+        x == null ||
+        y == null ||
+        y < frame.top ||
+        y > frame.top + frame.height ||
+        x < frame.left ||
+        x > frame.left + frame.width
+      ) {
+        marker.el.style.visibility = "hidden";
+        continue;
+      }
+      marker.el.style.visibility = "visible";
+      marker.el.style.left = `${x}px`;
+      marker.el.style.top = `${y}px`;
+      marker.el.style.transform =
+        marker.side === "sell" ? "translate(-50%, -100%)" : "translate(-50%, 0)";
+    }
+  }
+
+  function ensureCloseMarkerFromClose(id, openPosition) {
+    const tradeId = String(id);
+    const sym = ctx().activeSymbol;
+    const anchor = closeAnchors.get(tradeId);
+    const closed = (ctx().closed || []).find((c) => String(c.id) === tradeId);
+    const markerSymbol = closed?.symbol || openPosition?.symbol || anchor?.symbol;
+    if (markerSymbol && markerSymbol !== sym) return;
+
+    const side = String(closed?.side || openPosition?.side || anchor?.side || "buy").toLowerCase();
+    let exit =
+      closed?.exit != null && closed.exit !== ""
+        ? Number(closed.exit)
+        : anchor?.exit != null
+          ? Number(anchor.exit)
+          : null;
+    const closedTime = closed?.closed_time ?? anchor?.unixSec ?? null;
+    if (exit == null || closedTime == null) {
+      if (openPosition || anchor) trackedCloseIds.add(tradeId);
+      return;
+    }
+
+    const barTime = resolveCloseBarTime(closedTime, anchor);
+    upsertCloseMarker({
+      id: tradeId,
+      side,
+      price: exit,
+      barTime,
+      symbol: markerSymbol || sym,
+    });
+  }
+
+  function syncCloseMarkers() {
+    for (const tradeId of trackedCloseIds) {
+      if (!closeMarkers.has(tradeId)) {
+        ensureCloseMarkerFromClose(tradeId, null);
+      }
+    }
+  }
+
+  function repositionCloseMarkers() {
+    const frame = getPlotFrame();
+    const sym = ctx().activeSymbol;
+    for (const marker of closeMarkers.values()) {
+      if (marker.symbol !== sym) {
+        marker.el.style.visibility = "hidden";
+        continue;
+      }
+      const x = timeToLocalX(marker.barTime);
+      const y = priceToLocalY(marker.price);
+      if (
+        x == null ||
+        y == null ||
+        y < frame.top ||
+        y > frame.top + frame.height ||
+        x < frame.left ||
+        x > frame.left + frame.width
+      ) {
+        marker.el.style.visibility = "hidden";
+        continue;
+      }
+      marker.el.style.visibility = "visible";
+      marker.el.style.left = `${x}px`;
+      marker.el.style.top = `${y}px`;
+      marker.el.style.transform = closeMarkerTransform(marker.side);
+    }
+  }
+
+  function setCloseAnchor(tradeId, anchor) {
+    if (tradeId == null || !anchor) return;
+    const exit = anchor.exit != null ? Number(anchor.exit) : null;
+    if (exit == null || !Number.isFinite(exit)) return;
+    const unixSec = normalizeUnixSec(anchor.unixSec) ?? nowSec();
+    const barTime =
+      anchor.barTime ??
+      resolveBarTime(unixSec);
+    closeAnchors.set(String(tradeId), {
+      side: String(anchor.side || "buy").toLowerCase(),
+      exit,
+      unixSec,
+      barTime,
+      symbol: anchor.symbol || ctx().activeSymbol,
+    });
+    trackedCloseIds.add(String(tradeId));
+    ensureCloseMarkerFromClose(tradeId, {
+      side: anchor.side,
+      symbol: anchor.symbol,
+    });
   }
 
   function updatePriceTags(view, viewId) {
@@ -413,49 +615,60 @@
     if (price != null) showPriceTag(view.tpPriceTag, price, frame, "tp", sym, anchorX);
   }
 
-  function hideLevel(flag, close) {
-    flag.style.visibility = "hidden";
-    close.style.visibility = "hidden";
+  function fmtPnlDisplay(pnl) {
+    const n = Number(pnl || 0);
+    if (n === 0) return "$0.00";
+    const sign = n > 0 ? "+" : "-";
+    return `${sign}$${Math.abs(n).toFixed(2)}`;
   }
 
-  function positionLevel(view, kind, price, slot, dragging) {
-    if (!canSetSlTp(view.position)) {
-      hideLevel(view.slFlag, view.slClose);
-      hideLevel(view.tpFlag, view.tpClose);
-      return;
+  function pnlClass(pnl) {
+    const n = Number(pnl || 0);
+    if (n > 0) return "positive";
+    if (n < 0) return "negative";
+    return "";
+  }
+
+  function livePnlFor(position) {
+    const live = (ctx().open || []).find((p) => String(p.id) === String(position.id));
+    return live?.pnl ?? position.pnl ?? 0;
+  }
+
+  function updatePnlDisplay(view) {
+    if (!view.pnlEl) return;
+    const pnl = livePnlFor(view.position);
+    view.pnlEl.textContent = fmtPnlDisplay(pnl);
+    view.pnlEl.classList.remove("positive", "negative");
+    view.pnlEl.classList.add(pnlClass(pnl));
+    if (view.volEl) {
+      view.volEl.textContent = Number(view.position.volume).toFixed(2);
     }
-    const flag = kind === "sl" ? view.slFlag : view.tpFlag;
-    const close = kind === "sl" ? view.slClose : view.tpClose;
-    const isSet = kind === "sl" ? view.position.sl != null : view.position.tp != null;
-    const y = priceToLocalY(price);
-    const frame = getPlotFrame();
-    if (y == null || y < frame.top || y > frame.top + frame.height) {
-      hideLevel(flag, close);
-      return;
+  }
+
+  function updateRowChrome(view) {
+    const pos = view.position;
+    const id = view.row?.dataset?.positionId ?? "";
+    const canStops = canSetSlTp(pos);
+
+    if (view.tpFlag) {
+      view.tpFlag.hidden = !canStops;
+      view.tpFlag.classList.toggle("afx-position-flag--focused", id === activeId && activeFocus === "tp");
     }
-    const timeX = timeToLocalX(resolvePositionTime(view.position));
-    const atEntry = Math.abs(price - view.position.price) < 1e-8;
-    let baseLeft = timeX;
-    if (baseLeft == null) baseLeft = chartCenterX(frame);
-    if (!isSet && atEntry) {
-      baseLeft += kind === "sl" ? -22 : 22;
+    if (view.slFlag) {
+      view.slFlag.hidden = !canStops;
+      view.slFlag.classList.toggle("afx-position-flag--focused", id === activeId && activeFocus === "sl");
     }
-    const viewId = view.row.dataset.positionId ?? "";
-    const focused = viewId === activeId && activeFocus === kind;
-    flag.style.visibility = "visible";
-    flag.style.top = `${y}px`;
-    flag.style.left = `${baseLeft}px`;
-    flag.style.transform = focused
-      ? "translate(-50%, -50%) scale(1.12)"
-      : "translate(-50%, -50%)";
-    if (isSet || dragging) {
-      close.style.visibility = "visible";
-      close.style.top = `${y}px`;
-      close.style.left = `${baseLeft + (kind === "sl" ? 18 : -18)}px`;
-      close.style.transform = "translate(-50%, -50%)";
-    } else {
-      close.style.visibility = "hidden";
+    if (view.tpClose) {
+      view.tpClose.hidden = !(canStops && pos.tp != null);
     }
+    if (view.slClose) {
+      view.slClose.hidden = !(canStops && pos.sl != null);
+    }
+    updatePnlDisplay(view);
+  }
+
+  function updateLivePnlAll() {
+    for (const view of views.values()) updatePnlDisplay(view);
   }
 
   function clearLevelLine(view, kind) {
@@ -500,13 +713,11 @@
     if (kind === "entry") {
       view.position.price = price;
       view.entryLine.applyOptions({ price });
-      view.label.textContent = formatPositionLabel(view.position);
       scheduleReposition();
       updatePriceTags(view, viewId);
       return;
     }
     view.drag.previewLine?.applyOptions({ price });
-    positionLevel(view, kind, price, kind === "sl" ? 0 : 1, true);
     updatePriceTags(view, viewId);
   }
 
@@ -619,7 +830,6 @@
         if (error) {
           view.position.price = originalPrice;
           view.entryLine.applyOptions({ price: originalPrice });
-          view.label.textContent = formatPositionLabel(view.position);
           toast(error, "error");
         }
         view.drag = null;
@@ -675,9 +885,16 @@
     setActive(null);
   }
 
-  function removeView(id) {
+  function removeView(id, { skipCloseMarker = false } = {}) {
     const view = views.get(id);
     if (!view) return;
+    if (!isDraftId(id)) {
+      if (!skipCloseMarker) {
+        persistClosedEntryMarker(id, view);
+        ensureCloseMarkerFromClose(id, view.position);
+      }
+      clearFillAnchor(id);
+    }
     if (view.drag?.previewLine) removeLine(view.drag.previewLine);
     removeLine(view.entryLine);
     if (view.slLine) removeLine(view.slLine);
@@ -685,16 +902,11 @@
     view.row.remove();
     view.confirmBtn?.remove();
     view.entryMarker?.remove();
-    view.slFlag.remove();
-    view.slClose.remove();
-    view.tpFlag.remove();
-    view.tpClose.remove();
     view.entryPriceTag.remove();
     view.slPriceTag.remove();
     view.tpPriceTag.remove();
     views.delete(id);
     if (activeId === id) setActive(null);
-    if (!isDraftId(id)) clearFillAnchor(id);
   }
 
   function clearSl(id) {
@@ -705,6 +917,7 @@
     if (!isDraftId(id)) {
       clearSlTpOnServer(view, "sl").then(() => toast("Stop loss removed")).catch((e) => toast(e?.message || "Error", "error"));
     }
+    updateRowChrome(view);
     scheduleReposition();
   }
 
@@ -716,6 +929,7 @@
     if (!isDraftId(id)) {
       clearSlTpOnServer(view, "tp").then(() => toast("Take profit removed")).catch((e) => toast(e?.message || "Error", "error"));
     }
+    updateRowChrome(view);
     scheduleReposition();
   }
 
@@ -803,10 +1017,12 @@
     if (isPending) row.classList.add("afx-position-row--pending");
     row.dataset.positionId = position.id;
 
-    const label = document.createElement("div");
-    label.className = "afx-position-label";
-    if (isOrderEntryDraggable(position)) label.classList.add("afx-position-label--draggable");
-    label.textContent = formatPositionLabel(position);
+    const pnlEl = document.createElement("span");
+    pnlEl.className = "afx-pos-pnl";
+
+    const volEl = document.createElement("span");
+    volEl.className = "afx-pos-vol";
+    volEl.textContent = Number(position.volume).toFixed(2);
 
     let confirmBtn = null;
     if (isDraft) {
@@ -825,11 +1041,18 @@
       closePosition(position.id);
     });
 
-    const slFlag = createFlag("sl", "Drag to set stop loss");
-    const slClose = createCloseButton("Remove stop loss");
     const tpFlag = createFlag("tp", "Drag to set take profit");
-    const tpClose = createCloseButton("Remove take profit");
+    const tpClose = createCloseButton("Remove take profit", "afx-stop-close");
+    const slFlag = createFlag("sl", "Drag to set stop loss");
+    const slClose = createCloseButton("Remove stop loss", "afx-stop-close");
     const entryMarker = createEntryMarker(side);
+
+    tpClose.hidden = true;
+    slClose.hidden = true;
+
+    row.append(pnlEl, volEl, positionClose, tpFlag, slFlag, tpClose, slClose);
+    if (confirmBtn) row.append(confirmBtn);
+    layer.appendChild(row);
 
     entryMarker.addEventListener("pointerdown", (e) => {
       e.stopPropagation();
@@ -837,7 +1060,8 @@
       if (isOrderEntryDraggable(position)) startDrag(position.id, "entry", e);
     });
 
-    label.addEventListener("pointerdown", (e) => {
+    row.addEventListener("pointerdown", (e) => {
+      if (e.target.closest(".afx-position-flag, .afx-position-close, .afx-position-confirm")) return;
       e.stopPropagation();
       setActive(position.id, "entry");
       if (isOrderEntryDraggable(position)) startDrag(position.id, "entry", e);
@@ -865,11 +1089,6 @@
       clearTp(position.id);
     });
 
-    row.append(label);
-    if (confirmBtn) row.append(confirmBtn);
-    row.append(positionClose);
-    layer.appendChild(row);
-
     const entryPriceTag = createPriceTag("entry");
     const slPriceTag = createPriceTag("sl");
     const tpPriceTag = createPriceTag("tp");
@@ -880,7 +1099,8 @@
       slLine: null,
       tpLine: null,
       row,
-      label,
+      pnlEl,
+      volEl,
       entryMarker,
       confirmBtn,
       positionClose,
@@ -902,6 +1122,7 @@
     }
 
     views.set(position.id, view);
+    updateRowChrome(view);
     scheduleReposition();
     setActive(position.id, "entry");
   }
@@ -921,8 +1142,6 @@
       ) {
         view.row.style.visibility = "hidden";
         if (view.entryMarker) view.entryMarker.style.visibility = "hidden";
-        hideLevel(view.slFlag, view.slClose);
-        hideLevel(view.tpFlag, view.tpClose);
         continue;
       }
 
@@ -936,23 +1155,14 @@
       view.row.style.visibility = "visible";
       view.row.style.display = "flex";
       view.row.style.top = `${entryY}px`;
-      view.row.style.left = `${entryX + 10}px`;
+      view.row.style.left = `${entryX + 8}px`;
       view.row.style.transform = "translateY(-50%)";
-      view.positionClose.style.visibility = "visible";
-      if (view.confirmBtn) view.confirmBtn.style.visibility = "visible";
 
-      const slPrice = view.position.sl ?? view.position.price;
-      const tpPrice = view.position.tp ?? view.position.price;
-
-      if (!view.drag || view.drag.kind !== "sl") {
-        positionLevel(view, "sl", slPrice, 0, false);
-      }
-      if (!view.drag || view.drag.kind !== "tp") {
-        positionLevel(view, "tp", tpPrice, 1, false);
-      }
-
+      updateRowChrome(view);
       updatePriceTags(view, view.row.dataset.positionId ?? "");
     }
+    repositionCloseMarkers();
+    repositionClosedEntryMarkers();
   }
 
   function positionTime(pos) {
@@ -968,6 +1178,7 @@
       volume: Number(pos.volume),
       sl: pos.sl != null && pos.sl !== "" ? Number(pos.sl) : null,
       tp: pos.tp != null && pos.tp !== "" ? Number(pos.tp) : null,
+      pnl: Number(pos.pnl || 0),
       orderKind: "market",
       status: "open",
       symbol: pos.symbol,
@@ -1004,7 +1215,7 @@
       if (existing) {
         existing.position = { ...existing.position, ...mapped, time: resolvePositionTime({ ...existing.position, ...mapped }) };
         existing.entryLine.applyOptions({ price: mapped.price });
-        existing.label.textContent = formatPositionLabel(existing.position);
+        updateRowChrome(existing);
         if (mapped.sl != null) {
           if (existing.position.sl !== mapped.sl) {
             clearLevelLine(existing, "sl");
@@ -1037,7 +1248,7 @@
       if (existing) {
         existing.position = { ...existing.position, ...mapped, time: resolvePositionTime({ ...existing.position, ...mapped }) };
         existing.entryLine.applyOptions({ price: mapped.price });
-        existing.label.textContent = formatPositionLabel(existing.position);
+        updateRowChrome(existing);
       } else {
         openPosition(mapped);
       }
@@ -1046,6 +1257,7 @@
       if (isDraftId(id)) continue;
       if (!serverIds.has(id)) removeView(id);
     }
+    syncCloseMarkers();
     scheduleReposition();
   }
 
@@ -1074,8 +1286,12 @@
   }
 
   function clear() {
-    for (const id of [...views.keys()]) removeView(id);
+    for (const id of [...views.keys()]) removeView(id, { skipCloseMarker: true });
     fillAnchors.clear();
+    closeAnchors.clear();
+    for (const id of [...closeMarkers.keys()]) removeCloseMarker(id);
+    for (const id of [...closedEntryMarkers.keys()]) removeClosedEntryMarker(id);
+    trackedCloseIds.clear();
   }
 
   function attach({ chart: c, series: s, container: el, getContext: gc }) {
@@ -1124,7 +1340,9 @@
     openDraft,
     setActive,
     reposition: scheduleReposition,
+    updateLivePnl: updateLivePnlAll,
     setFillAnchor,
+    setCloseAnchor,
     currentBarTime: () => ctx().fallbackTime?.() ?? null,
   };
 })();

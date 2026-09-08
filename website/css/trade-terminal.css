@@ -1997,10 +1997,44 @@ body[data-page="trade"].trade-clean-mode #trade-metrics {
   position: absolute;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   pointer-events: none;
   line-height: 1;
   z-index: 13;
+  padding: 2px 6px 2px 4px;
+  border-radius: 4px;
+  background: rgba(11, 14, 17, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.afx-pos-pnl {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+}
+
+.afx-pos-pnl.positive {
+  color: #0ecb81;
+}
+
+.afx-pos-pnl.negative {
+  color: #f6465d;
+}
+
+.afx-pos-pnl:not(.positive):not(.negative) {
+  color: #848e9c;
+}
+
+.afx-pos-vol {
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: #b7bdc6;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .afx-position-label {
@@ -2061,6 +2095,18 @@ body[data-page="trade"].trade-clean-mode #trade-metrics {
   position: static;
   transform: none;
   flex-shrink: 0;
+}
+
+.afx-position-row .afx-stop-close {
+  font-size: 13px;
+  width: 14px;
+  height: 14px;
+  opacity: 0.85;
+}
+
+.afx-position-row .afx-stop-close:hover {
+  opacity: 1;
+  color: #f6465d;
 }
 
 .afx-position-confirm {
@@ -2131,6 +2177,27 @@ body[data-page="trade"].trade-clean-mode #trade-metrics {
   filter: drop-shadow(0 0 6px rgba(246, 70, 93, 0.65));
 }
 
+.afx-close-marker {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 14;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+}
+
+.afx-close-marker--from-buy {
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 10px solid #f6465d;
+}
+
+.afx-close-marker--from-sell {
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 10px solid #0ecb81;
+}
+
 .afx-position-row {
   z-index: 14;
 }
@@ -2148,6 +2215,11 @@ body[data-page="trade"].trade-clean-mode #trade-metrics {
   touch-action: none;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
   z-index: 13;
+}
+
+.afx-position-row .afx-position-flag {
+  position: static;
+  flex-shrink: 0;
 }
 
 .afx-position-flag:active {

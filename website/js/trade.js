@@ -250,6 +250,7 @@
       activeSymbol,
       open: tradeSnapshot.open || [],
       pending: tradeSnapshot.pending || [],
+      closed: tradeSnapshot.closed || [],
       accountId,
       symbolMeta,
       fmtPrice,
@@ -799,6 +800,14 @@
 
   async function autoCloseOnStopHit(tradeId, reason, symbol) {
     if (!accountId || closingTradeIds.has(tradeId)) return;
+    const pos = tradeSnapshot.open.find((p) => p.id === tradeId);
+    const exitOverride =
+      reason === "sl" && pos?.sl != null
+        ? Number(pos.sl)
+        : reason === "tp" && pos?.tp != null
+          ? Number(pos.tp)
+          : null;
+    noteCloseAnchor(tradeId, pos, exitOverride);
     closingTradeIds.add(tradeId);
     orderBusy = true;
     setTradingControls(tradingEnabled);
@@ -1065,8 +1074,33 @@
     }
   }
 
+  function noteCloseAnchor(tradeId, pos, exitOverride) {
+    if (tradeId == null || !pos) return;
+    const side = String(pos.side).toLowerCase();
+    let exit = exitOverride != null ? Number(exitOverride) : null;
+    if (exit == null || !Number.isFinite(exit)) {
+      const tick = window.AlphaFXQuotes?.getLast?.(pos.symbol);
+      if (tick) exit = side === "buy" ? Number(tick.bid) : Number(tick.ask);
+    }
+    if (exit == null || !Number.isFinite(exit)) return;
+    const fillSec = Math.floor(Date.now() / 1000);
+    const barTime =
+      barBuffer.length > 0
+        ? barBuffer[barBuffer.length - 1].time
+        : barBucket(fillSec * 1000, activeTimeframe);
+    window.AlphaFXPositionOverlay?.setCloseAnchor?.(tradeId, {
+      side: pos.side,
+      exit,
+      unixSec: fillSec,
+      barTime,
+      symbol: pos.symbol,
+    });
+  }
+
   async function closePosition(tradeId) {
     if (!accountId || orderBusy) return;
+    const pos = tradeSnapshot.open.find((p) => p.id === tradeId);
+    noteCloseAnchor(tradeId, pos);
     orderBusy = true;
     setTradingControls(tradingEnabled);
     try {

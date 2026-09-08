@@ -1012,6 +1012,10 @@
   }
 
   function updateLivePnl() {
+    if (document.body.classList.contains("trade-clean-mode")) {
+      window.AlphaFXPositionOverlay?.updateLivePnl?.();
+      return;
+    }
     if (isMt5Mode()) return;
     const { open = [] } = ctx();
     for (const [id, o] of overlays) {
