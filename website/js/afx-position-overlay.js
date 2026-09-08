@@ -112,16 +112,24 @@
 
   function getPaneOrigin() {
     if (!chartEl) return { left: 0, top: 0, width: 0, height: 0 };
-    const canvases = chartEl.querySelectorAll("canvas");
-    const canvas = canvases.length ? canvases[0] : null;
     const containerRect = chartEl.getBoundingClientRect();
-    if (canvas) {
-      const canvasRect = canvas.getBoundingClientRect();
+    const canvases = [...chartEl.querySelectorAll("canvas")];
+    let bestRect = null;
+    let bestArea = 0;
+    for (const canvas of canvases) {
+      const rect = canvas.getBoundingClientRect();
+      const area = rect.width * rect.height;
+      if (area > bestArea) {
+        bestArea = area;
+        bestRect = rect;
+      }
+    }
+    if (bestRect) {
       return {
-        left: canvasRect.left - containerRect.left,
-        top: canvasRect.top - containerRect.top,
-        width: canvasRect.width,
-        height: canvasRect.height,
+        left: bestRect.left - containerRect.left,
+        top: bestRect.top - containerRect.top,
+        width: bestRect.width,
+        height: bestRect.height,
       };
     }
     const pane = chart?.paneSize?.(0) || { width: chartEl.clientWidth, height: chartEl.clientHeight };
@@ -669,7 +677,7 @@
         : anchor?.exit != null
           ? Number(anchor.exit)
           : null;
-    const closedSec = resolveHistoryCloseSec(tradeId, closed?.closed_time ?? anchor?.unixSec);
+    const closedSec = resolveHistoryCloseSec(tradeId, closed?.closed_time ?? anchor?.unixSec, exit, closed?.opened_time);
     if (exit == null || closedSec == null) return;
 
     upsertCloseMarker({
@@ -691,18 +699,22 @@
     });
   }
 
-  function resolveHistoryOpenSec(tradeId, serverOpenedTime) {
+  function resolveHistoryOpenSec(tradeId, serverOpenedTime, entry, closedTime) {
     const fn = ctx().resolveHistoryOpenSec;
-    if (fn) return fn(tradeId, serverOpenedTime);
-    const remembered = historyFillAnchors.get(String(tradeId));
-    if (remembered?.unixSec != null) return remembered.unixSec;
+    if (fn) return fn(tradeId, serverOpenedTime, entry, closedTime);
     return normalizeUnixSec(serverOpenedTime);
   }
 
-  function resolveHistoryCloseSec(tradeId, serverClosedTime) {
+  function resolveHistoryCloseSec(tradeId, serverClosedTime, exit, openedTime, resolvedOpenSec) {
+    const fn = ctx().resolveHistoryCloseSec;
+    if (fn) return fn(tradeId, serverClosedTime, exit, openedTime, resolvedOpenSec);
     const anchor = closeAnchors.get(String(tradeId));
     if (anchor?.unixSec != null) return anchor.unixSec;
     return normalizeUnixSec(serverClosedTime);
+  }
+
+  function getCloseAnchorSec(tradeId) {
+    return closeAnchors.get(String(tradeId))?.unixSec ?? null;
   }
 
   function clearHtmlTradeHistory() {
@@ -727,8 +739,8 @@
       const side = String(trade.side).toLowerCase();
       const entry = trade.entry != null && trade.entry !== "" ? Number(trade.entry) : null;
       const exit = trade.exit != null && trade.exit !== "" ? Number(trade.exit) : null;
-      const openedSec = resolveHistoryOpenSec(id, trade.opened_time);
-      const closedSec = resolveHistoryCloseSec(id, trade.closed_time);
+      const openedSec = resolveHistoryOpenSec(id, trade.opened_time, entry, trade.closed_time);
+      const closedSec = resolveHistoryCloseSec(id, trade.closed_time, exit, trade.opened_time, openedSec);
       if (entry == null || exit == null || openedSec == null || closedSec == null) continue;
       if (resolveBarTime(openedSec) == null || resolveBarTime(closedSec) == null) continue;
 
@@ -1783,6 +1795,7 @@
     setCloseAnchor,
     barTimeForSec: (sec) => resolveBarTime(sec),
     getHistoryFillSec,
+    getCloseAnchorSec,
     currentBarTime: () => ctx().fallbackTime?.() ?? null,
   };
 })();

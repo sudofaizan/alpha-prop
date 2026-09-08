@@ -175,15 +175,100 @@
     sessionFillTimes.set(String(tradeId), sec);
   }
 
-  function resolveHistoryOpenSec(tradeId, serverOpenedTime) {
+  function barAtUnixSec(unixSec) {
+    const sec = normalizeUnixSec(unixSec);
+    if (sec == null || !barBuffer.length) return null;
+    const bucket = barBucket(sec * 1000, activeTimeframe);
+    return barBuffer.find((b) => b.time === bucket) || null;
+  }
+
+  function priceFitsBar(price, bar) {
+    if (!bar || price == null) return false;
+    const p = Number(price);
+    if (!Number.isFinite(p)) return false;
+    const span = Math.max(Number(bar.high) - Number(bar.low), 0.01);
+    const pad = Math.max(0.15, span * 0.15);
+    return p >= Number(bar.low) - pad && p <= Number(bar.high) + pad;
+  }
+
+  /**
+   * Pick the unix second for a marker so (time, price) lands on a real candle.
+   * Fixes stale opened_at when a limit order was placed hours before it filled.
+   */
+  function resolveMarkerTimeForPrice(price, preferredSec, closedSec, minSec) {
+    const p = Number(price);
+    if (!Number.isFinite(p)) return normalizeUnixSec(preferredSec);
+
+    const preferred = normalizeUnixSec(preferredSec);
+    const closeHint = normalizeUnixSec(closedSec);
+    const floorSec = normalizeUnixSec(minSec);
+    const step = tfStep(activeTimeframe);
+    const prefBar = preferred != null ? barAtUnixSec(preferred) : null;
+    if (prefBar && priceFitsBar(p, prefBar)) {
+      if (floorSec == null || preferred >= floorSec) return preferred;
+    }
+
+    const closeBar = closeHint != null ? barAtUnixSec(closeHint) : null;
+    if (closeBar && priceFitsBar(p, closeBar)) {
+      if (floorSec == null || closeHint >= floorSec) return closeHint;
+    }
+
+    // Prefer the newest candle in view whose range contains the execution price.
+    for (let i = barBuffer.length - 1; i >= 0; i--) {
+      const b = barBuffer[i];
+      const candidate = b.time + Math.floor(step / 2);
+      if (floorSec != null && candidate < floorSec) continue;
+      if (priceFitsBar(p, b)) return candidate;
+    }
+
+    // Fallback: nearest OHLC to price, searching recent bars first.
+    let bestTime = preferred ?? closeHint ?? null;
+    let bestDiff = Infinity;
+    for (let i = barBuffer.length - 1; i >= 0; i--) {
+      const b = barBuffer[i];
+      const candidate = b.time + Math.floor(step / 2);
+      if (floorSec != null && candidate < floorSec) continue;
+      const diff = Math.min(
+        Math.abs(Number(b.close) - p),
+        Math.abs(Number(b.open) - p),
+        Math.abs(Number(b.high) - p),
+        Math.abs(Number(b.low) - p),
+      );
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestTime = candidate;
+      }
+    }
+    if (bestTime != null && (floorSec == null || bestTime >= floorSec)) return bestTime;
+    return floorSec ?? bestTime;
+  }
+
+  function resolveHistoryOpenSec(tradeId, serverOpenedTime, entry, closedTime) {
     const remembered =
       sessionFillTimes.get(String(tradeId)) ??
       window.AlphaFXPositionOverlay?.getHistoryFillSec?.(tradeId);
     if (remembered != null) {
       const sec = normalizeUnixSec(remembered);
+      if (sec != null && isPlausibleUnixSec(sec)) {
+        const bar = barAtUnixSec(sec);
+        if (!entry || !bar || priceFitsBar(entry, bar)) return sec;
+      }
+    }
+    const opened = normalizeUnixSec(serverOpenedTime);
+    const closed = normalizeUnixSec(closedTime);
+    return resolveMarkerTimeForPrice(entry, opened, closed);
+  }
+
+  function resolveHistoryCloseSec(tradeId, serverClosedTime, exit, openedTime, resolvedOpenSec) {
+    const anchor = window.AlphaFXPositionOverlay?.getCloseAnchorSec?.(tradeId);
+    if (anchor != null) {
+      const sec = normalizeUnixSec(anchor);
       if (sec != null && isPlausibleUnixSec(sec)) return sec;
     }
-    return normalizeUnixSec(serverOpenedTime);
+    const closed = normalizeUnixSec(serverClosedTime);
+    const opened = normalizeUnixSec(openedTime);
+    const floorSec = normalizeUnixSec(resolvedOpenSec ?? openedTime);
+    return resolveMarkerTimeForPrice(exit, closed, closed ?? opened, floorSec);
   }
 
   function destroyChart() {
@@ -298,7 +383,8 @@
       barBuffer,
       fallbackTime: () => barBuffer[barBuffer.length - 1]?.time,
       resolveHistoryOpenSec,
-      isTimeInBarBuffer,
+      resolveHistoryCloseSec,
+      resolveMarkerTimeForPrice,
       closePosition: (id) => closePosition(id),
       cancelPendingOrder: (id) => cancelPendingOrder(id),
       submitDraftOrder: (draft) => submitDraftOrder(draft),

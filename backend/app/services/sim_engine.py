@@ -555,6 +555,7 @@ def open_market_order(
         margin_used=margin,
         order_type="market",
         status="open",
+        opened_at=_utcnow(),
     )
     db.add(trade)
     db.commit()
