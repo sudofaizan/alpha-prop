@@ -402,6 +402,21 @@
     return tag;
   }
 
+  function createStopTagRow(kind) {
+    const row = document.createElement("div");
+    row.className = `afx-stop-tag-row afx-stop-tag-row--${kind}`;
+    row.hidden = true;
+    const label = document.createElement("span");
+    label.className = `afx-price-tag afx-price-tag--${kind}`;
+    const close = createCloseButton(
+      kind === "sl" ? "Remove stop loss" : "Remove take profit",
+      "afx-stop-close",
+    );
+    row.append(label, close);
+    layer.appendChild(row);
+    return { row, label, close };
+  }
+
   function lineWidthFor(viewId, kind) {
     if (activeId !== viewId) return LINE_WIDTH.normal;
     if (activeFocus === kind) return LINE_WIDTH.focused;
@@ -852,33 +867,67 @@
   function updatePriceTags(view, viewId) {
     const selected = viewId === activeId;
     view.entryPriceTag.hidden = true;
-    view.slPriceTag.hidden = true;
-    view.tpPriceTag.hidden = true;
-    if (!selected || activeFocus == null) return;
+    if (!selected || activeFocus !== "entry") return;
     const frame = getPlotFrame();
     const sym = view.position.symbol;
     const anchorX = timeToLocalXForUnix(resolvePositionUnixSec(view.position));
-    if (activeFocus === "entry") {
-      showPriceTag(view.entryPriceTag, view.position.price, frame, "entry", sym, anchorX);
+    showPriceTag(view.entryPriceTag, view.position.price, frame, "entry", sym, anchorX);
+  }
+
+  function stopTagPrice(view, kind) {
+    if (view.drag?.kind === kind && view.drag.previewLine) {
+      try {
+        const p = view.drag.previewLine.options?.().price;
+        if (p != null && Number.isFinite(Number(p))) return Number(p);
+      } catch {
+        /* ignore */
+      }
+    }
+    return kind === "sl" ? view.position.sl : view.position.tp;
+  }
+
+  function positionStopTagRow(view, kind, slot) {
+    const isSl = kind === "sl";
+    const tagRow = isSl ? view.slTagRow : view.tpTagRow;
+    const label = isSl ? view.slPriceTag : view.tpPriceTag;
+    if (!tagRow || !label) return;
+
+    const isSet = isSl ? view.position.sl != null : view.position.tp != null;
+    const dragging = view.drag?.kind === kind;
+    if (!canSetSlTp(view.position) || (!isSet && !dragging)) {
+      tagRow.hidden = true;
       return;
     }
-    if (activeFocus === "sl") {
-      const price =
-        view.drag?.kind === "sl"
-          ? (view.drag.previewLine && typeof view.drag.previewLine.options === "function"
-              ? view.drag.previewLine.options().price
-              : null) ?? view.position.sl
-          : view.position.sl;
-      if (price != null) showPriceTag(view.slPriceTag, price, frame, "sl", sym, anchorX);
+
+    const price = stopTagPrice(view, kind);
+    if (price == null) {
+      tagRow.hidden = true;
       return;
     }
-    const price =
-      view.drag?.kind === "tp"
-        ? (view.drag.previewLine && typeof view.drag.previewLine.options === "function"
-            ? view.drag.previewLine.options().price
-            : null) ?? view.position.tp
-        : view.position.tp;
-    if (price != null) showPriceTag(view.tpPriceTag, price, frame, "tp", sym, anchorX);
+
+    const y = priceToLocalY(price);
+    const frame = getPlotFrame();
+    if (y == null || y < frame.top || y > frame.top + frame.height) {
+      tagRow.hidden = true;
+      return;
+    }
+
+    const entryX = timeToLocalXForUnix(resolvePositionUnixSec(view.position));
+    if (entryX == null) {
+      tagRow.hidden = true;
+      return;
+    }
+
+    const sym = view.position.symbol;
+    const prefix = isSl ? "SL" : "TP";
+    label.textContent = `${prefix} ${fmtPrice(price, sym)}`;
+    tagRow.hidden = false;
+    tagRow.style.visibility = "visible";
+    tagRow.style.position = "absolute";
+    tagRow.style.top = `${y}px`;
+    tagRow.style.left = `${flagAnchorOnLine(entryX, slot)}px`;
+    tagRow.style.transform = "translateY(-50%)";
+    tagRow.style.zIndex = "17";
   }
 
   function formatOrderTypeLabel(position) {
@@ -1010,25 +1059,24 @@
 
   function positionLevel(view, kind, price, slot) {
     if (!canSetSlTp(view.position)) {
-      hideLevel(view.slFlag, view.slClose);
-      hideLevel(view.tpFlag, view.tpClose);
+      hideLevel(view.slFlag, null);
+      hideLevel(view.tpFlag, null);
       return;
     }
 
     const flag = kind === "sl" ? view.slFlag : view.tpFlag;
-    const close = kind === "sl" ? view.slClose : view.tpClose;
     const isSet = kind === "sl" ? view.position.sl != null : view.position.tp != null;
     const dragging = view.drag?.kind === kind;
     const y = priceToLocalY(price);
     const frame = getPlotFrame();
     if (y == null || y < frame.top || y > frame.top + frame.height) {
-      hideLevel(flag, close);
+      hideLevel(flag, null);
       return;
     }
 
     const entryX = timeToLocalXForUnix(resolvePositionUnixSec(view.position));
     if (entryX == null) {
-      hideLevel(flag, close);
+      hideLevel(flag, null);
       return;
     }
 
@@ -1045,19 +1093,6 @@
     flag.style.left = `${baseLeft}px`;
     flag.style.zIndex = "16";
     flag.style.transform = focused ? "translateY(-50%) scale(1.12)" : "translateY(-50%)";
-
-    if (isSet || dragging) {
-      close.hidden = false;
-      close.style.visibility = "visible";
-      close.style.position = "absolute";
-      close.style.top = `${y}px`;
-      close.style.left = `${baseLeft - 20}px`;
-      close.style.zIndex = "17";
-      close.style.transform = "translateY(-50%)";
-    } else {
-      close.style.visibility = "hidden";
-      close.hidden = true;
-    }
   }
 
   function updateLivePnlAll() {
@@ -1373,12 +1408,10 @@
     view.confirmBtn?.remove();
     view.entryMarker?.remove();
     view.slFlag?.remove();
-    view.slClose?.remove();
+    view.slTagRow?.remove();
     view.tpFlag?.remove();
-    view.tpClose?.remove();
+    view.tpTagRow?.remove();
     view.entryPriceTag.remove();
-    view.slPriceTag.remove();
-    view.tpPriceTag.remove();
     views.delete(id);
     if (activeId === id) setActive(null);
   }
@@ -1536,13 +1569,12 @@
     });
 
     const tpFlag = createFlag("tp", "Drag to set take profit");
-    const tpClose = createCloseButton("Remove take profit", "afx-stop-close");
     const slFlag = createFlag("sl", "Drag to set stop loss");
-    const slClose = createCloseButton("Remove stop loss", "afx-stop-close");
+    const slTag = createStopTagRow("sl");
+    const tpTag = createStopTagRow("tp");
+    const slClose = slTag.close;
+    const tpClose = tpTag.close;
     const entryMarker = createEntryMarker(side);
-
-    tpClose.hidden = true;
-    slClose.hidden = true;
 
     let dragGrip = null;
     if (isDraft || isPending) {
@@ -1559,9 +1591,7 @@
     if (confirmBtn) row.append(confirmBtn);
     layer.appendChild(row);
     layer.appendChild(slFlag);
-    layer.appendChild(slClose);
     layer.appendChild(tpFlag);
-    layer.appendChild(tpClose);
 
     entryMarker.addEventListener("pointerdown", (e) => {
       e.stopPropagation();
@@ -1570,7 +1600,7 @@
     });
 
     row.addEventListener("pointerdown", (e) => {
-      if (e.target.closest(".afx-position-flag, .afx-position-close, .afx-position-confirm, .afx-order-grip")) return;
+      if (e.target.closest(".afx-position-flag, .afx-position-close, .afx-position-confirm, .afx-order-grip, .afx-stop-tag-row")) return;
       e.stopPropagation();
       setActive(position.id, "entry");
       if (isOrderEntryDraggable(position)) startDrag(position.id, "entry", e);
@@ -1601,8 +1631,6 @@
     tpClose.addEventListener("pointerdown", (e) => e.stopPropagation());
 
     const entryPriceTag = createPriceTag("entry");
-    const slPriceTag = createPriceTag("sl");
-    const tpPriceTag = createPriceTag("tp");
 
     const view = {
       position,
@@ -1618,11 +1646,13 @@
       positionClose,
       slFlag,
       slClose,
+      slTagRow: slTag.row,
+      slPriceTag: slTag.label,
       tpFlag,
       tpClose,
+      tpTagRow: tpTag.row,
+      tpPriceTag: tpTag.label,
       entryPriceTag,
-      slPriceTag,
-      tpPriceTag,
       drag: null,
     };
 
@@ -1670,6 +1700,8 @@
 
       positionLevel(view, "tp", levelPrice(view, "tp"), 0);
       positionLevel(view, "sl", levelPrice(view, "sl"), 1);
+      positionStopTagRow(view, "tp", 0);
+      positionStopTagRow(view, "sl", 1);
 
       updateRowChrome(view);
       updatePriceTags(view, view.row.dataset.positionId ?? "");

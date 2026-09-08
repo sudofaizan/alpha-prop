@@ -2233,6 +2233,34 @@ body[data-page="trade"].trade-clean-mode #trade-metrics {
   flex-shrink: 0;
 }
 
+.afx-stop-tag-row {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: auto;
+  z-index: 17;
+}
+
+.afx-stop-tag-row .afx-price-tag {
+  position: static;
+  transform: none;
+  pointer-events: none;
+}
+
+.afx-stop-tag-row .afx-stop-close {
+  position: static;
+  transform: none;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  font-size: 14px;
+  line-height: 18px;
+  text-align: center;
+  border-radius: 4px;
+  background: rgba(11, 14, 17, 0.85);
+}
+
 .afx-position-close.afx-stop-close {
   position: absolute;
   z-index: 17;
