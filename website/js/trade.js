@@ -40,6 +40,8 @@
   let chartMount = null;
   let loadChartPromise = null;
   let layoutReady = false;
+  /** @type {Map<string, number>} */
+  const sessionFillTimes = new Map();
 
   function tickTimeMs(tick) {
     let t = Number(tick?.time_ms) || Date.now();
@@ -143,6 +145,45 @@
       patchFormingBar(tick);
       window.AlphaFXChartPositions?.layoutAll?.();
     });
+  }
+
+  function normalizeUnixSec(t) {
+    const n = Number(t);
+    if (!Number.isFinite(n)) return null;
+    return n > 1e12 ? Math.floor(n / 1000) : Math.floor(n);
+  }
+
+  function isPlausibleUnixSec(sec) {
+    return sec != null && sec >= 1_000_000_000;
+  }
+
+  /** True when unix sec falls inside a loaded OHLC bar window. */
+  function isTimeInBarBuffer(unixSec) {
+    const sec = normalizeUnixSec(unixSec);
+    if (sec == null || !barBuffer.length) return false;
+    const bucket = barBucket(sec * 1000, activeTimeframe);
+    const step = tfStep(activeTimeframe);
+    const first = barBuffer[0].time;
+    const last = barBuffer[barBuffer.length - 1].time;
+    if (bucket < first || bucket >= last + step) return false;
+    return barBuffer.some((b) => b.time === bucket);
+  }
+
+  function rememberSessionFillTime(tradeId, unixSec) {
+    const sec = normalizeUnixSec(unixSec);
+    if (tradeId == null || sec == null || !isPlausibleUnixSec(sec)) return;
+    sessionFillTimes.set(String(tradeId), sec);
+  }
+
+  function resolveHistoryOpenSec(tradeId, serverOpenedTime) {
+    const remembered =
+      sessionFillTimes.get(String(tradeId)) ??
+      window.AlphaFXPositionOverlay?.getHistoryFillSec?.(tradeId);
+    if (remembered != null) {
+      const sec = normalizeUnixSec(remembered);
+      if (sec != null && isPlausibleUnixSec(sec)) return sec;
+    }
+    return normalizeUnixSec(serverOpenedTime);
   }
 
   function destroyChart() {
@@ -256,6 +297,8 @@
       fmtPrice,
       barBuffer,
       fallbackTime: () => barBuffer[barBuffer.length - 1]?.time,
+      resolveHistoryOpenSec,
+      isTimeInBarBuffer,
       closePosition: (id) => closePosition(id),
       cancelPendingOrder: (id) => cancelPendingOrder(id),
       submitDraftOrder: (draft) => submitDraftOrder(draft),
@@ -297,6 +340,7 @@
         ? barBuffer[barBuffer.length - 1].time
         : barBucket(fillSec * 1000, activeTimeframe));
     if (res.trade_id != null) {
+      rememberSessionFillTime(res.trade_id, fillSec);
       window.AlphaFXPositionOverlay?.setFillAnchor?.(res.trade_id, { unixSec: fillSec, barTime });
     }
     await loadTradeSnapshot();
@@ -1088,6 +1132,7 @@
           ? barBuffer[barBuffer.length - 1].time
           : barBucket(fillSec * 1000, activeTimeframe));
       if (res.trade_id != null) {
+        rememberSessionFillTime(res.trade_id, fillSec);
         window.AlphaFXPositionOverlay?.setFillAnchor?.(res.trade_id, {
           unixSec: fillSec,
           barTime,
@@ -1219,6 +1264,7 @@
       syncPositionQuoteSubscriptions();
       refreshLiveMetrics();
       syncChartPositions();
+      window.AlphaFXPositionOverlay?.sync?.();
       updateBottomCounts();
       renderBottomPanel();
       updatePositionsBtn();
@@ -1748,7 +1794,7 @@
       applyChartSize(container);
       updateChartBadge(symbol);
       syncChartPositions();
-      window.AlphaFXPositionOverlay?.reposition?.();
+      window.AlphaFXPositionOverlay?.sync?.();
     } catch (e) {
       console.error("loadChart failed:", e);
     } finally {

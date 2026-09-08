@@ -110,15 +110,26 @@
     return (Number(tick.bid) + Number(tick.ask)) / 2;
   }
 
-  function getPlotFrame() {
-    if (!chart || !chartEl) {
-      return { left: 0, top: 0, width: 0, height: 0 };
+  function getPaneOrigin() {
+    if (!chartEl) return { left: 0, top: 0, width: 0, height: 0 };
+    const canvases = chartEl.querySelectorAll("canvas");
+    const canvas = canvases.length ? canvases[0] : null;
+    const containerRect = chartEl.getBoundingClientRect();
+    if (canvas) {
+      const canvasRect = canvas.getBoundingClientRect();
+      return {
+        left: canvasRect.left - containerRect.left,
+        top: canvasRect.top - containerRect.top,
+        width: canvasRect.width,
+        height: canvasRect.height,
+      };
     }
-    const pane = chart.paneSize?.(0) || {
-      width: chartEl.clientWidth || 0,
-      height: chartEl.clientHeight || 0,
-    };
+    const pane = chart?.paneSize?.(0) || { width: chartEl.clientWidth, height: chartEl.clientHeight };
     return { left: 0, top: 0, width: pane.width, height: pane.height };
+  }
+
+  function getPlotFrame() {
+    return getPaneOrigin();
   }
 
   /** Map trade timestamp + price to pixel coords inside #trade-chart (LW canvas space). */
@@ -145,7 +156,8 @@
       /* ignore */
     }
     if (x == null || y == null || !Number.isFinite(x) || !Number.isFinite(y)) return null;
-    return { x, y };
+    const origin = getPaneOrigin();
+    return { x: origin.left + x, y: origin.top + y };
   }
 
   function priceToLocalY(price) {
@@ -417,7 +429,7 @@
 
   function showPriceTag(tag, price, frame, kind, symbol, anchorX) {
     const y = priceToLocalY(price);
-    if (y == null || y < 0 || y > frame.height) {
+    if (y == null || y < frame.top || y > frame.top + frame.height) {
       tag.hidden = true;
       return;
     }
@@ -504,10 +516,10 @@
     return (
       x != null &&
       y != null &&
-      y >= 0 &&
-      y <= frame.height &&
-      x >= 0 &&
-      x <= frame.width
+      y >= frame.top &&
+      y <= frame.top + frame.height &&
+      x >= frame.left &&
+      x <= frame.left + frame.width
     );
   }
 
@@ -642,32 +654,6 @@
     removeTradeConnector(id);
   }
 
-  function repositionClosedEntryMarkers() {
-    const frame = getPlotFrame();
-    const sym = ctx().activeSymbol;
-    for (const marker of closedEntryMarkers.values()) {
-      if (marker.symbol !== sym) {
-        marker.el.style.visibility = "hidden";
-        continue;
-      }
-      const coords = chartCoords(marker.unixTime, marker.price);
-      if (!coords) {
-        marker.el.style.visibility = "hidden";
-        continue;
-      }
-      const { x, y } = coords;
-      if (y < 0 || y > frame.height || x < 0 || x > frame.width) {
-        marker.el.style.visibility = "hidden";
-        continue;
-      }
-      marker.el.style.visibility = "visible";
-      marker.el.style.left = `${x}px`;
-      marker.el.style.top = `${y}px`;
-      marker.el.style.transform =
-        marker.side === "sell" ? "translate(-50%, -100%)" : "translate(-50%, 0)";
-    }
-  }
-
   function ensureCloseMarkerFromClose(id, openPosition) {
     const tradeId = String(id);
     const sym = ctx().activeSymbol;
@@ -683,18 +669,15 @@
         : anchor?.exit != null
           ? Number(anchor.exit)
           : null;
-    const closedTime = closed?.closed_time ?? anchor?.unixSec ?? null;
-    if (exit == null || closedTime == null) {
-      if (openPosition || anchor) trackedCloseIds.add(tradeId);
-      return;
-    }
+    const closedSec = resolveHistoryCloseSec(tradeId, closed?.closed_time ?? anchor?.unixSec);
+    if (exit == null || closedSec == null) return;
 
     upsertCloseMarker({
       id: tradeId,
       side,
       price: exit,
-      unixTime: closedTime,
-      barTime: resolveCloseBarTime(closedTime, anchor),
+      unixTime: closedSec,
+      barTime: resolveBarTime(closedSec),
       symbol: markerSymbol || sym,
     });
   }
@@ -709,6 +692,8 @@
   }
 
   function resolveHistoryOpenSec(tradeId, serverOpenedTime) {
+    const fn = ctx().resolveHistoryOpenSec;
+    if (fn) return fn(tradeId, serverOpenedTime);
     const remembered = historyFillAnchors.get(String(tradeId));
     if (remembered?.unixSec != null) return remembered.unixSec;
     return normalizeUnixSec(serverOpenedTime);
@@ -720,8 +705,19 @@
     return normalizeUnixSec(serverClosedTime);
   }
 
+  function clearHtmlTradeHistory() {
+    for (const id of [...closedEntryMarkers.keys()]) removeClosedEntryMarker(id);
+    for (const id of [...closeMarkers.keys()]) removeCloseMarker(id);
+    if (connectorSvg) {
+      connectorSvg.remove();
+      connectorSvg = null;
+    }
+    tradeConnectors.clear();
+  }
+
   function syncClosedHistory() {
     if (!layer) return;
+    clearHtmlTradeHistory();
     const sym = ctx().activeSymbol;
     const historyIds = new Set();
 
@@ -734,9 +730,7 @@
       const openedSec = resolveHistoryOpenSec(id, trade.opened_time);
       const closedSec = resolveHistoryCloseSec(id, trade.closed_time);
       if (entry == null || exit == null || openedSec == null || closedSec == null) continue;
-      const entryBar = resolveBarTime(openedSec);
-      const closeBar = resolveBarTime(closedSec);
-      if (entryBar == null || closeBar == null) continue;
+      if (resolveBarTime(openedSec) == null || resolveBarTime(closedSec) == null) continue;
 
       historyIds.add(id);
       upsertClosedEntryMarker({
@@ -744,7 +738,7 @@
         side,
         price: entry,
         unixTime: openedSec,
-        barTime: entryBar,
+        barTime: resolveBarTime(openedSec),
         symbol: sym,
       });
       upsertCloseMarker({
@@ -752,7 +746,7 @@
         side,
         price: exit,
         unixTime: closedSec,
-        barTime: closeBar,
+        barTime: resolveBarTime(closedSec),
         symbol: sym,
       });
     }
@@ -760,19 +754,36 @@
     for (const id of [...historyFillAnchors.keys()]) {
       if (!historyIds.has(id)) historyFillAnchors.delete(id);
     }
-
-    for (const id of [...closedEntryMarkers.keys()]) {
-      const marker = closedEntryMarkers.get(id);
-      if (marker?.symbol === sym && !historyIds.has(id)) removeClosedEntryMarker(id);
-    }
-    for (const id of [...closeMarkers.keys()]) {
-      const marker = closeMarkers.get(id);
-      if (marker?.symbol === sym && !historyIds.has(id)) removeCloseMarker(id);
-    }
   }
 
   function syncCloseMarkers() {
     /* history close markers come from syncClosedHistory only */
+  }
+
+  function repositionClosedEntryMarkers() {
+    const frame = getPlotFrame();
+    const sym = ctx().activeSymbol;
+    for (const marker of closedEntryMarkers.values()) {
+      if (marker.symbol !== sym) {
+        marker.el.style.visibility = "hidden";
+        continue;
+      }
+      const coords = chartCoords(marker.unixTime, marker.price);
+      if (!coords) {
+        marker.el.style.visibility = "hidden";
+        continue;
+      }
+      const { x, y } = coords;
+      if (y < frame.top || y > frame.top + frame.height || x < frame.left || x > frame.left + frame.width) {
+        marker.el.style.visibility = "hidden";
+        continue;
+      }
+      marker.el.style.visibility = "visible";
+      marker.el.style.left = `${x}px`;
+      marker.el.style.top = `${y}px`;
+      marker.el.style.transform =
+        marker.side === "sell" ? "translate(-50%, -100%)" : "translate(-50%, 0)";
+    }
   }
 
   function repositionCloseMarkers() {
@@ -789,7 +800,7 @@
         continue;
       }
       const { x, y } = coords;
-      if (y < 0 || y > frame.height || x < 0 || x > frame.width) {
+      if (y < frame.top || y > frame.top + frame.height || x < frame.left || x > frame.left + frame.width) {
         marker.el.style.visibility = "hidden";
         continue;
       }
@@ -943,7 +954,7 @@
     const dragging = view.drag?.kind === kind;
     const y = priceToLocalY(price);
     const frame = getPlotFrame();
-    if (y == null || y < 0 || y > frame.height) {
+    if (y == null || y < frame.top || y > frame.top + frame.height) {
       hideLevel(flag, close);
       return;
     }
@@ -1540,10 +1551,10 @@
       const coords = chartCoords(resolvePositionUnixSec(view.position), view.position.price);
       const entryInFrame =
         coords != null &&
-        coords.y >= 0 &&
-        coords.y <= frame.height &&
-        coords.x >= 0 &&
-        coords.x <= frame.width;
+        coords.y >= frame.top &&
+        coords.y <= frame.top + frame.height &&
+        coords.x >= frame.left &&
+        coords.x <= frame.left + frame.width;
 
       if (entryInFrame) {
         const side = String(view.position.side).toLowerCase();
@@ -1572,6 +1583,13 @@
     repositionCloseMarkers();
     repositionClosedEntryMarkers();
     repositionTradeConnectors();
+  }
+
+  function getHistoryFillSec(tradeId) {
+    const remembered = historyFillAnchors.get(String(tradeId));
+    if (remembered?.unixSec != null) return remembered.unixSec;
+    const live = fillAnchors.get(String(tradeId));
+    return live?.unixSec ?? null;
   }
 
   function positionTime(pos) {
@@ -1764,6 +1782,7 @@
     setFillAnchor,
     setCloseAnchor,
     barTimeForSec: (sec) => resolveBarTime(sec),
+    getHistoryFillSec,
     currentBarTime: () => ctx().fallbackTime?.() ?? null,
   };
 })();
