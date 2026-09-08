@@ -875,13 +875,18 @@
     return view.position.tp != null ? Number(view.position.tp) : Number(view.position.price);
   }
 
-  function flagAnchorLeft(view, entryX, slot) {
+  function flagAnchorRightOfRow(view, entryX, slot) {
     const rowLeft = entryX + 8;
     const rowWidth = view.row.offsetWidth || 0;
     if (view.row.style.visibility !== "hidden" && rowWidth > 0) {
       return rowLeft + rowWidth + 8 + slot * 28;
     }
     return entryX + 8 + slot * 28;
+  }
+
+  /** Anchor on the SL/TP horizontal line at the entry candle column */
+  function flagAnchorOnLine(entryX, slot) {
+    return entryX + 10 + slot * 24;
   }
 
   function positionLevel(view, kind, price, slot) {
@@ -907,7 +912,11 @@
       hideLevel(flag, close);
       return;
     }
-    const baseLeft = flagAnchorLeft(view, entryX, slot);
+
+    const baseLeft =
+      isSet || dragging
+        ? flagAnchorOnLine(entryX, slot)
+        : flagAnchorRightOfRow(view, entryX, slot);
     const viewId = view.row.dataset.positionId ?? "";
     const focused = viewId === activeId && activeFocus === kind;
 
