@@ -974,6 +974,21 @@
     return Number.isFinite(n) ? n : null;
   }
 
+  const DRAFT_ORDER_OFFSET = 2;
+
+  function defaultDraftOrderPrice(side, kind) {
+    const tick = window.AlphaFXQuotes?.getLast(activeSymbol);
+    if (!tick) return null;
+    const mid = (Number(tick.bid) + Number(tick.ask)) / 2;
+    if (!Number.isFinite(mid)) return null;
+    const s = String(side).toLowerCase();
+    const k = String(kind).toLowerCase();
+    let raw = mid;
+    if (k === "limit") raw = s === "buy" ? mid - DRAFT_ORDER_OFFSET : mid + DRAFT_ORDER_OFFSET;
+    else if (k === "stop") raw = s === "buy" ? mid + DRAFT_ORDER_OFFSET : mid - DRAFT_ORDER_OFFSET;
+    return Number(fmtPrice(activeSymbol, raw));
+  }
+
   async function submitOrder(side) {
     if (!tradingEnabled || orderBusy || !accountId) return;
     const volume = Number(document.getElementById("trade-volume")?.value || 0);
@@ -985,11 +1000,17 @@
     const isClean = document.body.classList.contains("trade-clean-mode");
 
     if (isClean && orderType !== "market") {
-      const price = parseOptionalPrice(document.getElementById("trade-price")?.value);
+      let price = parseOptionalPrice(document.getElementById("trade-price")?.value);
       if (price == null) {
-        toast("Enter an order price for limit/stop orders.", "error");
-        return;
+        price = defaultDraftOrderPrice(side, orderType);
+        if (price == null) {
+          toast("Waiting for market price…", "error");
+          return;
+        }
+        const priceInput = document.getElementById("trade-price");
+        if (priceInput) priceInput.value = fmtPrice(activeSymbol, price);
       }
+      window.AlphaFXPositionOverlay?.clearDrafts?.();
       window.AlphaFXPositionOverlay?.openDraft({
         side,
         volume,

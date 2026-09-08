@@ -1511,12 +1511,12 @@
     const marketPrice = getMarketPrice();
     let entryPrice = price;
     if (String(orderKind).toLowerCase() === "market") entryPrice = marketPrice;
-    else if (entryPrice == null) entryPrice = marketPrice;
+    else if (entryPrice == null && marketPrice != null) entryPrice = marketPrice;
 
     openPosition({
       id,
       side: String(side).toLowerCase(),
-      price: entryPrice,
+      price: Number(entryPrice),
       volume,
       sl: null,
       tp: null,
@@ -1525,7 +1525,14 @@
       symbol: sym,
       opened_time: Math.floor(Date.now() / 1000),
     });
+    setActive(id, "entry");
     return id;
+  }
+
+  function clearDrafts() {
+    for (const id of [...views.keys()]) {
+      if (isDraftId(id)) removeView(id, { skipCloseMarker: true });
+    }
   }
 
   function clear() {
@@ -1586,6 +1593,7 @@
     sync,
     clear,
     openDraft,
+    clearDrafts,
     setActive,
     reposition: scheduleReposition,
     updateLivePnl: updateLivePnlAll,
