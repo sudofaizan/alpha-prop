@@ -255,17 +255,30 @@
         root.innerHTML = emptyState("No purchases yet", "When you buy a challenge, your invoices will appear here.", "index.html", "Buy challenge");
         return;
       }
+      function statusChip(status) {
+        const s = String(status || "").toLowerCase();
+        if (s === "paid") return `<span class="pt-chip pt-chip--success">Complete</span>`;
+        if (s === "pending") return `<span class="pt-chip pt-chip--warn">Incomplete</span>`;
+        if (s === "expired") return `<span class="pt-chip pt-chip--danger">Expired</span>`;
+        return `<span class="pt-chip">${s.toUpperCase()}</span>`;
+      }
+
       const rows = data.items.map((o) => {
         const created = window.AlphaFXTime ? window.AlphaFXTime.parseUtc(o.created_at) : new Date(o.created_at);
         const date = created.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
         const discount = o.base_amount > o.amount ? `<span style="text-decoration:line-through;color:var(--text-mute);margin-right:6px;">${money(o.base_amount)}</span>` : "";
+        const payAction =
+          o.status === "pending" && o.payment_session_id
+            ? `<a class="pt-btn pt-btn--ghost" style="padding:4px 10px;font-size:11px;" href="payment.html?session=${encodeURIComponent(o.payment_session_id)}">Complete payment</a>`
+            : "—";
         return `<tr>
           <td>${date}</td>
           <td>${o.account_size_label} ${o.program_label}</td>
           <td>${discount}${money(o.amount)}</td>
           <td>${o.coupon_code || "—"}</td>
-          <td><span class="pt-chip pt-chip--success">${o.status.toUpperCase()}</span></td>
+          <td>${statusChip(o.status)}</td>
           <td>${o.account_number ? `#${o.account_number}` : "—"}</td>
+          <td>${payAction}</td>
         </tr>`;
       }).join("");
       root.innerHTML = `
@@ -275,7 +288,7 @@
           <div class="pt-stat-card"><div class="pt-stat-label">Pending payments</div><div class="pt-stat-value">${data.pending_payments}</div></div>
         </div>
         <div class="pt-card pt-card--flush"><div class="pt-table-wrap"><table class="pt-table">
-          <thead><tr><th>Date</th><th>Challenge</th><th>Amount</th><th>Coupon</th><th>Status</th><th>Account</th></tr></thead>
+          <thead><tr><th>Date</th><th>Challenge</th><th>Amount</th><th>Coupon</th><th>Status</th><th>Account</th><th></th></tr></thead>
           <tbody>${rows}</tbody>
         </table></div></div>`;
     } catch (err) {

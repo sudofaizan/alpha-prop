@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     tick_hub_ws: str = ""
     tick_hub_http: str = "http://127.0.0.1:9003"
     tick_mock: bool = True
+    bsc_rpc_url: str = "https://bsc-dataseed1.binance.org"
 
     @property
     def cors_origin_list(self) -> list[str]:

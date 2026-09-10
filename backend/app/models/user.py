@@ -23,5 +23,6 @@ class User(Base):
     session = relationship("UserSession", back_populates="user", uselist=False, cascade="all, delete-orphan")
     accounts = relationship("ChallengeAccount", back_populates="user", cascade="all, delete-orphan")
     orders = relationship("Order", back_populates="user", cascade="all, delete-orphan")
+    payment_sessions = relationship("PaymentSession", back_populates="user", cascade="all, delete-orphan")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
     strikes = relationship("UserStrike", back_populates="user", cascade="all, delete-orphan", order_by="UserStrike.created_at.desc()")

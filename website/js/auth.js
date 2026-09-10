@@ -9,7 +9,8 @@
   }
 
   function redirectToLogin() {
-    const next = encodeURIComponent(window.location.pathname.split("/").pop() || "dashboard.html");
+    const page = window.location.pathname.split("/").pop() || "dashboard.html";
+    const next = encodeURIComponent(`${page}${window.location.search || ""}`);
     window.location.href = `login.html?next=${next}`;
   }
 

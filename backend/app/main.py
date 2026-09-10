@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import admin, auth, billing_notifications, market, plans, portal, support, trade
+from app.routers import admin, auth, billing_notifications, market, payment, plans, portal, support, trade
 from app.seed import init_db
 from app.services.tick_upstream import tick_upstream
 from app.ws import quotes as ws_quotes
@@ -24,6 +24,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(plans.router, prefix="/api/v1")
 app.include_router(portal.router, prefix="/api/v1")
+app.include_router(payment.router, prefix="/api/v1")
 app.include_router(billing_notifications.router, prefix="/api/v1")
 app.include_router(support.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")

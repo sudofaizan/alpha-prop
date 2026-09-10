@@ -29,11 +29,45 @@ def _migrate_user_sessions() -> None:
             conn.execute(text("ALTER TABLE user_sessions ADD COLUMN device_id VARCHAR(64)"))
 
 
+def _migrate_orders_payment() -> None:
+    insp = inspect(engine)
+    if "orders" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("orders")}
+    with engine.begin() as conn:
+        if "tx_hash" not in cols:
+            conn.execute(text("ALTER TABLE orders ADD COLUMN tx_hash VARCHAR(80)"))
+
+
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _migrate_sim_trades()
     _migrate_user_sessions()
+    _migrate_orders_payment()
     seed_admin()
+    seed_payment_settings()
+
+
+def seed_payment_settings() -> None:
+    from app.models import PaymentSettings
+    from app.services.payment_settings import DEFAULT_WALLET
+
+    db = SessionLocal()
+    try:
+        if db.query(PaymentSettings).filter(PaymentSettings.id == 1).one_or_none():
+            return
+        db.add(
+            PaymentSettings(
+                id=1,
+                wallet_address=DEFAULT_WALLET,
+                network="bep20",
+                asset="usdt",
+                enabled=True,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
 
 
 def seed_admin() -> None:

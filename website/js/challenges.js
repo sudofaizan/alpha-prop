@@ -1,10 +1,10 @@
 /**
- * Capiffy-style Challenges — loads catalog from API, mock Pay now creates account
+ * Capiffy-style Challenges — loads catalog from API, routes to checkout page
  */
 (function () {
   if (document.body.dataset.page !== "challenges") return;
 
-  const PROGRAM_ORDER = ["one-step", "two-step", "three-step", "instant"];
+  const P = window.AlphaFXPlansPricing;
   let PLANS = null;
 
   const state = {
@@ -17,40 +17,8 @@
   let root;
   let els = {};
 
-  function fmtMoney(n) {
-    if (n >= 1000) {
-      const k = n / 1000;
-      return `$${Number.isInteger(k) ? k : k.toFixed(1)}K`;
-    }
-    return `$${n}`;
-  }
-
-  function fmtMoneyFull(n) {
-    return `$${Number(n).toLocaleString("en-US")}`;
-  }
-
-  function pctOf(balance, pct) {
-    return Math.round(balance * (pct / 100));
-  }
-
   function getProgram(id) {
     return PLANS?.programs?.[id];
-  }
-
-  function getSizes(programId) {
-    return programId === "instant" ? PLANS.instantSizes : PLANS.evalSizes;
-  }
-
-  function getBasePrice(size, programId) {
-    if (programId === "instant") return PLANS.instantPricing[size] ?? PLANS.instantPricing[2500];
-    if (programId === "three-step") return PLANS.threeStepPricing[size] ?? PLANS.threeStepPricing[2500];
-    return PLANS.evalPricing[size] ?? PLANS.evalPricing[2500];
-  }
-
-  function getPrice(size, programId, discounted) {
-    const base = getBasePrice(size, programId);
-    if (discounted) return Math.round(base * (1 - PLANS.promoDiscount) * 100) / 100;
-    return base;
   }
 
   function showMostChosen(programId, size) {
@@ -83,7 +51,38 @@
   }
 
   function programIndex() {
-    return PROGRAM_ORDER.indexOf(state.program);
+    return P.PROGRAM_ORDER.indexOf(state.program);
+  }
+
+  function readUrlParams() {
+    const params = new URLSearchParams(window.location.search);
+    const program = P.normalizeProgramId(params.get("program"));
+    const size = parseInt(params.get("size"), 10);
+    const coupon = (params.get("coupon") || "").trim();
+
+    if (program) state.program = program;
+    if (Number.isFinite(size) && size > 0) state.size = size;
+
+    const sizes = P.getSizes(PLANS, state.program);
+    if (!sizes.includes(state.size)) state.size = sizes[0];
+
+    if (coupon && els.couponInput) {
+      els.couponInput.value = coupon;
+      if (P.isValidCoupon(PLANS, coupon)) state.couponApplied = true;
+    }
+  }
+
+  function checkoutUrl() {
+    const url = new URL("checkout.html", window.location.href);
+    url.searchParams.set("program", state.program);
+    url.searchParams.set("size", String(state.size));
+    const coupon = state.couponApplied
+      ? (els.couponInput?.value || PLANS.promoCode).trim()
+      : (els.couponInput?.value || "").trim();
+    if (coupon && P.isValidCoupon(PLANS, coupon)) url.searchParams.set("coupon", coupon.toUpperCase());
+    const referral = (els.referralInput?.value || "").trim();
+    if (referral) url.searchParams.set("referral", referral);
+    return url.pathname + url.search;
   }
 
   function setActiveButtons(buttons, activeIndex, activeClass) {
@@ -101,12 +100,12 @@
 
   function renderSizeStrip() {
     if (!els.sizeStrip) return;
-    const sizes = getSizes(state.program);
+    const sizes = P.getSizes(PLANS, state.program);
     if (!sizes.includes(state.size)) state.size = sizes[0];
     els.sizeStrip.innerHTML = sizes
       .map(
         (s) =>
-          `<button type="button" class="pg-sizedot${s === state.size ? " is-active" : ""}" data-size="${s}">${fmtMoney(s)}</button>`
+          `<button type="button" class="pg-sizedot${s === state.size ? " is-active" : ""}" data-size="${s}">${P.fmtMoney(s)}</button>`
       )
       .join("");
   }
@@ -129,7 +128,7 @@
     if (!els.planRules) return;
     const rows = [];
     if (phase.profitTargetPct != null) {
-      rows.push(ruleRow("Profit target", `${phase.profitTargetPct}%<span class="pg-target-amt">${fmtMoneyFull(pctOf(state.size, phase.profitTargetPct))}</span>`, true));
+      rows.push(ruleRow("Profit target", `${phase.profitTargetPct}%<span class="pg-target-amt">${P.fmtMoneyFull(P.pctOf(state.size, phase.profitTargetPct))}</span>`, true));
     }
     rows.push(ruleRow("Max overall loss", `${phase.maxOverallLossPct}%`, false));
     rows.push(ruleRow("Max daily loss", `${phase.maxDailyLossPct}%`, false));
@@ -156,9 +155,9 @@
     if (!program) return;
     if (state.phaseIndex >= program.phases.length) state.phaseIndex = 0;
     const phase = program.phases[state.phaseIndex];
-    if (els.planTag) els.planTag.textContent = `${program.slug} · ${fmtMoney(state.size)}`;
+    if (els.planTag) els.planTag.textContent = `${program.slug} · ${P.fmtMoney(state.size)}`;
     if (els.planChosen) els.planChosen.style.display = showMostChosen(state.program, state.size) ? "" : "none";
-    if (els.planName) els.planName.textContent = `${fmtMoney(state.size)} ${program.name}`;
+    if (els.planName) els.planName.textContent = `${P.fmtMoney(state.size)} ${program.name}`;
     if (els.planSub) els.planSub.textContent = program.tagline;
     renderPhaseTabs(program);
     renderRules(phase);
@@ -166,7 +165,7 @@
   }
 
   function updatePrice() {
-    if (els.payPrice) els.payPrice.textContent = `$${getPrice(state.size, state.program, state.couponApplied).toFixed(2)}`;
+    if (els.payPrice) els.payPrice.textContent = `$${P.getPrice(PLANS, state.size, state.program, state.couponApplied).toFixed(2)}`;
   }
 
   function updatePayButton() {
@@ -197,7 +196,7 @@
     els.typeTabs?.addEventListener("click", (e) => {
       const btn = e.target.closest(".pg-typetab");
       if (!btn) return;
-      state.program = PROGRAM_ORDER[[...els.typeTabs.querySelectorAll(".pg-typetab")].indexOf(btn)];
+      state.program = P.PROGRAM_ORDER[[...els.typeTabs.querySelectorAll(".pg-typetab")].indexOf(btn)];
       state.phaseIndex = 0;
       renderAll();
     });
@@ -218,7 +217,7 @@
     els.referralInput?.addEventListener("input", updateApplyButtons);
     els.couponApply?.addEventListener("click", () => {
       const code = (els.couponInput?.value || "").trim().toUpperCase();
-      if ([PLANS.promoCode, "ALPHA38", "CAP38"].includes(code)) {
+      if (P.isValidCoupon(PLANS, code)) {
         state.couponApplied = true;
         updatePrice();
       } else if (code) alert("Invalid coupon code");
@@ -229,22 +228,8 @@
     root.querySelectorAll('.hp-pm-terms-row input[type="checkbox"]').forEach((cb) => {
       cb.addEventListener("change", updatePayButton);
     });
-    els.payBtn?.addEventListener("click", async () => {
-      els.payBtn.disabled = true;
-      try {
-        const result = await window.AlphaFXApi.checkoutPay({
-          program: state.program,
-          account_size: state.size,
-          coupon_code: state.couponApplied ? (els.couponInput?.value || PLANS.promoCode).trim() : null,
-          referral_code: (els.referralInput?.value || "").trim() || null,
-          terms_accepted: true,
-          refund_accepted: true,
-        });
-        window.location.href = `accounts.html?purchased=${result.account_number}`;
-      } catch (err) {
-        alert(err.message || "Payment failed");
-        updatePayButton();
-      }
+    els.payBtn?.addEventListener("click", () => {
+      window.location.href = checkoutUrl();
     });
   }
 
@@ -257,6 +242,11 @@
       return;
     }
     if (!cacheElements()) return;
+    readUrlParams();
+    if (els.payBtn) {
+      els.payBtn.innerHTML =
+        'Continue to payment<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"></path></svg>';
+    }
     renderAll();
     bindEvents();
   }

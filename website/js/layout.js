@@ -5,6 +5,8 @@ const PROMO_CODE = "ALPHA38";
 const TRADER_PAGES = new Set([
   "dashboard",
   "challenges",
+  "checkout",
+  "payment",
   "accounts",
   "trade",
   "billing",
@@ -42,6 +44,7 @@ const ADMIN_NAV = [
   { id: "admin-users", label: "Users", href: "admin.html#users", group: "Administration", icon: "accounts", tab: "users" },
   { id: "admin-accounts", label: "Accounts", href: "admin.html#accounts", group: "Administration", icon: "billing", tab: "accounts" },
   { id: "admin-orders", label: "Orders", href: "admin.html#orders", group: "Administration", icon: "billing", tab: "orders" },
+  { id: "admin-payments", label: "Payments", href: "admin.html#payments", group: "Administration", icon: "payouts", tab: "payments" },
   { id: "admin-support", label: "Support", href: "admin.html#support", group: "Administration", icon: "support", tab: "support" },
 ];
 
@@ -79,7 +82,7 @@ function brandLogo() {
 
 function adminTabFromHash() {
   const hash = (window.location.hash || "").replace("#", "").toLowerCase();
-  return ["live", "users", "accounts", "orders"].includes(hash) ? hash : "live";
+  return ["live", "users", "accounts", "orders", "payments"].includes(hash) ? hash : "live";
 }
 
 function isNavItemActive(item, active, isAdmin) {
@@ -99,9 +102,9 @@ function navItem(item, active, isAdmin) {
 
 function isChallengesPage() {
   const page = document.body.dataset.page;
-  if (page === "challenges") return true;
+  if (page === "challenges" || page === "checkout") return true;
   const path = window.location.pathname.toLowerCase();
-  return path.endsWith("/index.html") || path.endsWith("/") || path.endsWith("index.html");
+  return path.endsWith("/index.html") || path.endsWith("/") || path.endsWith("index.html") || path.endsWith("/checkout.html");
 }
 
 function shouldShowPromo(isAdmin) {

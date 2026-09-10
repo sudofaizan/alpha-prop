@@ -8,7 +8,7 @@ from app.services.accounts import _size_label
 def billing_summary(db: Session, user: User) -> dict:
     orders = (
         db.query(Order)
-        .options(joinedload(Order.account))
+        .options(joinedload(Order.account), joinedload(Order.payment_session))
         .filter(Order.user_id == user.id)
         .order_by(Order.created_at.desc())
         .all()
@@ -35,6 +35,8 @@ def billing_summary(db: Session, user: User) -> dict:
                 "status": o.status,
                 "payment_method": o.payment_method,
                 "account_number": o.account.account_number if o.account else None,
+                "payment_session_id": o.payment_session.public_id if o.payment_session else None,
+                "tx_hash": o.tx_hash,
             }
         )
 

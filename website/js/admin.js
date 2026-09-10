@@ -16,7 +16,7 @@
 
   function tabFromHash() {
     const hash = (window.location.hash || "").replace("#", "").toLowerCase();
-    return ["live", "users", "accounts", "orders", "support"].includes(hash) ? hash : "live";
+    return ["live", "users", "accounts", "orders", "payments", "support"].includes(hash) ? hash : "live";
   }
 
   function setActiveTab(tab, { skipHash = false, keepDetail = false } = {}) {
@@ -500,11 +500,33 @@
         <td>${o.user_email || o.user_id}</td>
         <td>${o.program} · $${o.account_size}</td>
         <td>${money(o.amount)}</td>
-        <td>${o.payment_method}</td>
+        <td>${o.payment_method || "—"}</td>
+        <td>${o.status || "—"}</td>
         <td>${o.account_number || "—"}</td>
       </tr>`
     );
-    setPanel(table(["Order", "User", "Plan", "Amount", "Method", "Account"], rows));
+    setPanel(table(["Order", "User", "Plan", "Amount", "Method", "Status", "Account"], rows));
+  }
+
+  async function renderPayments() {
+    const settings = await window.AlphaFXApi.adminPaymentSettings();
+    setPanel(`
+      <div class="admin-section-title">USDT BEP-20 payment wallet</div>
+      <p class="admin-muted" style="margin-bottom:16px;">Users paying with crypto see this address on the payment page. Changing it applies to new checkout sessions immediately.</p>
+      <div class="pt-card" style="padding:20px;max-width:560px;">
+        <div class="admin-field" style="margin-bottom:14px;">
+          <label for="admin-pay-wallet">Wallet address (BSC)</label>
+          <input id="admin-pay-wallet" class="admin-select" type="text" spellcheck="false" value="${settings.wallet_address || ""}" placeholder="0x…">
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-dim);margin-bottom:16px;">
+          <input type="checkbox" id="admin-pay-enabled" ${settings.enabled ? "checked" : ""}>
+          Crypto payments enabled
+        </label>
+        <div class="admin-actions">
+          <button type="button" class="admin-btn admin-btn--gold" data-save-payment-settings>Save payment settings</button>
+        </div>
+        <p class="admin-muted" style="margin-top:12px;">Network: ${settings.network?.toUpperCase() || "BEP20"} · Asset: ${settings.asset?.toUpperCase() || "USDT"} · Updated: ${settings.updated_at || "—"}</p>
+      </div>`);
   }
 
   function stopLiveTimer() {
@@ -540,6 +562,7 @@
     }
     if (activeTab === "accounts") await renderAccounts();
     if (activeTab === "orders") await renderOrders();
+    if (activeTab === "payments") await renderPayments();
     if (activeTab === "support") await renderSupport();
   }
 
@@ -665,6 +688,24 @@
       e.preventDefault();
       adminDeviceFilter = "";
       await renderUsers();
+      return;
+    }
+
+    if (e.target.closest("[data-save-payment-settings]")) {
+      e.preventDefault();
+      const wallet = document.getElementById("admin-pay-wallet")?.value?.trim() || "";
+      const enabled = document.getElementById("admin-pay-enabled")?.checked ?? true;
+      if (!wallet.startsWith("0x") || wallet.length < 10) {
+        alert("Enter a valid BSC wallet address");
+        return;
+      }
+      try {
+        await window.AlphaFXApi.adminUpdatePaymentSettings({ wallet_address: wallet, enabled });
+        alert("Payment settings saved");
+        await renderPayments();
+      } catch (err) {
+        alert(err.message || "Save failed");
+      }
       return;
     }
 

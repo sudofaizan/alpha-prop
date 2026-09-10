@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#13131a">
+  <title>Complete payment — AlphaFX</title>
+  <link rel="stylesheet" href="css/capiffy/dbe7481feefb38d2.css">
+  <link rel="stylesheet" href="css/capiffy/59f9d657f37015b6.css">
+  <link rel="stylesheet" href="css/capiffy/c1bee8ab903b382d.css">
+  <link rel="stylesheet" href="css/capiffy/3ac04c147fc81d91.css">
+  <link rel="stylesheet" href="css/fonts.css">
+  <link rel="stylesheet" href="css/checkout.css">
+</head>
+<body data-page="payment" data-title="Complete payment" data-no-wrap="true">
+  <div id="app-root">
+    <div class="dfx-scope checkout-page" data-screen-label="Payment">
+      <div class="checkout-header">
+        <div>
+          <a class="checkout-back" href="billing.html">← Billing</a>
+          <span class="dfx-overview-tag" style="margin-bottom: 12px;">USDT · BEP-20</span>
+          <h1 style="font-family: var(--font-display); font-size: 32px; font-weight: 900; letter-spacing: -0.022em; line-height: 1.05; color: var(--text); margin: 0 0 6px;">Send payment</h1>
+          <p style="font-family: var(--font-body); font-size: 14px; color: var(--text-dim); margin: 0;">Payment ID: <strong id="pay-session-id" style="color: var(--text);">—</strong></p>
+        </div>
+      </div>
+
+      <div id="pay-main" class="checkout-grid">
+        <section>
+          <div class="checkout-card">
+            <h2 class="checkout-card-title">Order</h2>
+            <p class="checkout-card-sub" id="pay-plan-sub">Loading…</p>
+            <dl id="pay-summary-lines"></dl>
+            <div class="checkout-total">
+              <span class="checkout-total-label">Send exactly</span>
+              <div style="text-align: right;">
+                <span class="checkout-total-value" id="pay-amount">—</span>
+                <span style="display:block;font-size:12px;color:var(--text-mute);margin-top:4px;">USDT on BNB Smart Chain</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div class="checkout-card">
+            <h2 class="checkout-card-title">Payment details</h2>
+            <p class="checkout-card-sub">Send USDT (BEP-20) to the address below. We auto-detect your payment for 5 minutes.</p>
+
+            <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-bottom:16px;">
+              <img id="pay-qr" alt="Payment QR code" width="160" height="160" style="border-radius:12px;border:1px solid var(--border);background:#fff;padding:8px;" hidden>
+              <div style="flex:1;min-width:220px;">
+                <div class="checkout-note" style="margin-top:0;margin-bottom:10px;">
+                  Time remaining: <strong id="pay-timer" style="color:var(--gold);font-size:18px;">05:00</strong>
+                </div>
+                <label style="display:block;font-size:11px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Wallet address</label>
+                <div style="display:flex;gap:8px;align-items:center;">
+                  <code id="pay-address" style="flex:1;word-break:break-all;font-size:12px;padding:10px 12px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);">—</code>
+                  <button type="button" class="pt-btn pt-btn--ghost" id="pay-copy-btn" style="flex-shrink:0;">Copy</button>
+                </div>
+                <p class="checkout-note" style="margin-top:10px;">
+                  Detected: <strong id="pay-delta">0.00</strong> / <span id="pay-expected">—</span> USDT
+                </p>
+              </div>
+            </div>
+
+            <div style="margin-top:18px;padding-top:18px;border-top:1px solid rgba(255,255,255,.08);">
+              <h3 style="font-size:14px;font-weight:700;margin:0 0 8px;color:var(--text);">Already sent? Confirm with transaction hash</h3>
+              <p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">If you left this page or auto-detect missed it, paste your BscScan tx hash.</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <input id="pay-tx-hash" type="text" placeholder="0x…" spellcheck="false" style="flex:1;min-width:200px;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-family:var(--font-mono);font-size:12px;">
+                <button type="button" class="hp-pm-cta" id="pay-verify-btn" style="min-width:140px;">Verify payment</button>
+              </div>
+            </div>
+
+            <div class="checkout-error" id="pay-error" role="alert"></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="checkout-card checkout-success" id="pay-success" hidden>
+        <div class="checkout-success-icon" aria-hidden="true">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
+        </div>
+        <h2>Payment complete</h2>
+        <p id="pay-success-msg">Your challenge account is ready.</p>
+        <div class="checkout-success-actions">
+          <a class="pt-btn pt-btn--primary" id="pay-success-trade" href="trade.html">Start trading</a>
+          <a class="pt-btn pt-btn--ghost" id="pay-success-accounts" href="accounts.html">View accounts</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="js/layout.js?v=20260910b"></script>
+  <script src="js/config.js"></script>
+  <script src="js/api.js?v=20260910b"></script>
+  <script src="js/auth.js?v=20260907i"></script>
+  <script src="js/trade-toast.js"></script>
+  <script src="js/payment.js?v=20260910b"></script>
+</body>
+</html>

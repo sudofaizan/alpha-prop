@@ -119,6 +119,40 @@ def dashboard_for_user(db: Session, user: User) -> DashboardResponse:
     )
 
 
+def fulfill_paid_order(db: Session, order: Order) -> ChallengeAccount:
+    if order.challenge_account_id:
+        account = db.query(ChallengeAccount).filter(ChallengeAccount.id == order.challenge_account_id).one()
+        return account
+
+    account_number = generate_account_number(db)
+    phase_label = plan_data.initial_phase(order.program)
+
+    account = ChallengeAccount(
+        user_id=order.user_id,
+        account_number=account_number,
+        program=order.program,
+        account_size=order.account_size,
+        phase_label=phase_label,
+        phase_index=0,
+        status="funded" if order.program == "instant" else "active",
+        starting_balance=float(order.account_size),
+        balance=float(order.account_size),
+        equity=float(order.account_size),
+        open_pnl=0.0,
+    )
+    db.add(account)
+    db.flush()
+
+    order.challenge_account_id = account.id
+    order.status = "paid"
+    db.add(order)
+    db.flush()
+
+    size_label = _size_label(order.account_size)
+    notify_checkout(db, order.user_id, plan_data.program_label(order.program), size_label, account_number)
+    return account
+
+
 def mock_checkout(
     db: Session,
     user: User,
@@ -133,28 +167,10 @@ def mock_checkout(
 
     amount = plan_data.get_price(account_size, program, coupon_code)
     base_amount = plan_data.get_base_price(account_size, program)
-    account_number = generate_account_number(db)
-    phase_label = plan_data.initial_phase(program)
-
-    account = ChallengeAccount(
-        user_id=user.id,
-        account_number=account_number,
-        program=program,
-        account_size=account_size,
-        phase_label=phase_label,
-        phase_index=0,
-        status="funded" if program == "instant" else "active",
-        starting_balance=float(account_size),
-        balance=float(account_size),
-        equity=float(account_size),
-        open_pnl=0.0,
-    )
-    db.add(account)
-    db.flush()
 
     order = Order(
         user_id=user.id,
-        challenge_account_id=account.id,
+        challenge_account_id=None,
         program=program,
         account_size=account_size,
         amount=amount,
@@ -165,10 +181,10 @@ def mock_checkout(
         payment_method="mock",
     )
     db.add(order)
+    db.flush()
+    account = fulfill_paid_order(db, order)
     db.commit()
     db.refresh(account)
     db.refresh(order)
 
-    size_label = _size_label(account_size)
-    notify_checkout(db, user.id, plan_data.program_label(program), size_label, account_number)
     return order, account

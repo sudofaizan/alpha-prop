@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#13131a">
+  <title>Checkout — AlphaFX</title>
+  <link rel="stylesheet" href="css/capiffy/dbe7481feefb38d2.css">
+  <link rel="stylesheet" href="css/capiffy/59f9d657f37015b6.css">
+  <link rel="stylesheet" href="css/capiffy/c1bee8ab903b382d.css">
+  <link rel="stylesheet" href="css/capiffy/3ac04c147fc81d91.css">
+  <link rel="stylesheet" href="css/capiffy/3c6a7efccbedf43f.css">
+  <link rel="stylesheet" href="css/fonts.css">
+  <link rel="stylesheet" href="css/challenges-bridge.css">
+  <link rel="stylesheet" href="css/checkout.css">
+</head>
+<body data-page="checkout" data-title="Checkout" data-no-wrap="true">
+  <div id="app-root">
+    <div class="dfx-scope checkout-page" data-screen-label="Checkout">
+      <div class="checkout-header">
+        <div>
+          <a class="checkout-back" href="index.html" id="checkout-back-link">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3L5 8l5 5"></path></svg>
+            Back to plans
+          </a>
+          <span class="dfx-overview-tag" style="margin-bottom: 12px;">Secure checkout</span>
+          <h1 style="font-family: var(--font-display); font-size: 32px; font-weight: 900; letter-spacing: -0.022em; line-height: 1.05; color: var(--text); margin: 0 0 6px;">Complete your purchase</h1>
+          <p style="font-family: var(--font-body); font-size: 14px; color: var(--text-dim); margin: 0; max-width: 560px;">Review your challenge, choose a payment method, and get your account instantly.</p>
+        </div>
+      </div>
+
+      <div class="checkout-grid" id="checkout-main">
+        <section>
+          <div class="checkout-card">
+            <h2 class="checkout-card-title">Order summary</h2>
+            <p class="checkout-card-sub" id="checkout-plan-sub">Loading plan…</p>
+            <dl id="checkout-summary-lines"></dl>
+            <div class="checkout-total">
+              <span class="checkout-total-label">Total due today</span>
+              <div style="text-align: right;">
+                <span class="checkout-total-was" id="checkout-base-price" hidden></span>
+                <span class="checkout-total-value" id="checkout-total-price">—</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div class="checkout-card">
+            <h2 class="checkout-card-title">Payment</h2>
+            <p class="checkout-card-sub">Select how you want to pay for your challenge account.</p>
+
+            <div class="checkout-methods" role="radiogroup" aria-label="Payment method">
+              <button type="button" class="checkout-method is-active" data-method="card" role="radio" aria-checked="true">
+                <span class="checkout-method-radio" aria-hidden="true"></span>
+                <span class="checkout-method-body">
+                  <span class="checkout-method-title">Credit / debit card</span>
+                  <span class="checkout-method-sub">Visa, Mastercard, Amex — instant provisioning</span>
+                </span>
+                <span class="checkout-method-badge">Popular</span>
+              </button>
+              <button type="button" class="checkout-method" data-method="crypto" role="radio" aria-checked="false">
+                <span class="checkout-method-radio" aria-hidden="true"></span>
+                <span class="checkout-method-body">
+                  <span class="checkout-method-title">Crypto</span>
+                  <span class="checkout-method-sub">BTC, ETH, USDT — instant provisioning</span>
+                </span>
+              </button>
+            </div>
+
+            <div class="hp-pm-codes">
+              <div class="hp-pm-code">
+                <span class="hp-pm-code-label">Coupon</span>
+                <div class="hp-pm-code-row">
+                  <input class="hp-pm-code-input" id="checkout-coupon" placeholder="Enter code" spellcheck="false" autocapitalize="characters" type="text">
+                  <button type="button" class="hp-pm-code-apply" id="checkout-coupon-apply" disabled>Apply</button>
+                </div>
+              </div>
+              <div class="hp-pm-code">
+                <span class="hp-pm-code-label">Referral</span>
+                <div class="hp-pm-code-row">
+                  <input class="hp-pm-code-input" id="checkout-referral" placeholder="e.g. SUB-X7K2" spellcheck="false" autocapitalize="characters" type="text" style="font-family: var(--font-mono);">
+                  <button type="button" class="hp-pm-code-apply" id="checkout-referral-apply" disabled>Apply</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="hp-pm-terms" style="margin-top: 16px;">
+              <label class="hp-pm-terms-row">
+                <input type="checkbox" id="checkout-terms">
+                <span class="hp-pm-terms-box"></span>
+                <span>I agree to the <a target="_blank" href="#">Terms and Conditions</a>.</span>
+              </label>
+              <label class="hp-pm-terms-row">
+                <input type="checkbox" id="checkout-refund">
+                <span class="hp-pm-terms-box"></span>
+                <span>I agree to the <a target="_blank" href="#">Cancellation and Refund Policy</a>.</span>
+              </label>
+            </div>
+
+            <div class="hp-pm-pay" style="margin-top: 18px;">
+              <div class="hp-pm-pay-meta">
+                <div class="hp-pm-pay-label">Amount to pay</div>
+                <div class="hp-pm-pay-price" id="checkout-pay-price">—</div>
+              </div>
+              <button type="button" class="hp-pm-cta" id="checkout-pay-btn" disabled aria-disabled="true">
+                Complete purchase
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"></path></svg>
+              </button>
+            </div>
+
+            <div class="checkout-note">
+              <strong>Simulated evaluation.</strong> Your challenge account is provisioned immediately after payment. Card and crypto gateways are in demo mode — no real charge is processed yet.
+            </div>
+
+            <div class="checkout-error" id="checkout-error" role="alert"></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="checkout-card checkout-success" id="checkout-success" hidden>
+        <div class="checkout-success-icon" aria-hidden="true">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>
+        </div>
+        <h2>Payment successful</h2>
+        <p id="checkout-success-msg">Your challenge account is ready.</p>
+        <div class="checkout-success-actions">
+          <a class="pt-btn pt-btn--primary" id="checkout-success-trade" href="trade.html">Start trading</a>
+          <a class="pt-btn pt-btn--ghost" id="checkout-success-accounts" href="accounts.html">View accounts</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="js/layout.js?v=20260910a"></script>
+  <script src="js/config.js"></script>
+  <script src="js/api.js?v=20260907g"></script>
+  <script src="js/auth.js?v=20260907i"></script>
+  <script src="js/plans-pricing.js"></script>
+  <script src="js/checkout.js"></script>
+</body>
+</html>

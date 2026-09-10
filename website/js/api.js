@@ -54,7 +54,8 @@
     if (!res.ok) {
       const detail = data?.detail;
       const code = typeof detail === "object" ? detail.code : "REQUEST_FAILED";
-      const message = typeof detail === "object" ? detail.message : "Request failed";
+      const message =
+        typeof detail === "object" ? detail.message : typeof detail === "string" ? detail : "Request failed";
       const err = new Error(message);
       err.code = code;
       err.status = res.status;
@@ -87,6 +88,17 @@
     getAccounts: (status = "all") => request(`/api/v1/accounts?status=${encodeURIComponent(status)}`),
     getAccount: (id) => request(`/api/v1/accounts/${id}`),
     checkoutPay: (body) => request("/api/v1/checkout/pay", { method: "POST", body: JSON.stringify(body) }),
+    createCryptoSession: (body) =>
+      request("/api/v1/checkout/crypto/session", { method: "POST", body: JSON.stringify(body) }),
+    getPaymentSession: (sessionId) => request(`/api/v1/checkout/crypto/sessions/${encodeURIComponent(sessionId)}`),
+    verifyPaymentHash: (sessionId, tx_hash) =>
+      request(`/api/v1/checkout/crypto/sessions/${encodeURIComponent(sessionId)}/verify-hash`, {
+        method: "POST",
+        body: JSON.stringify({ tx_hash }),
+      }),
+    adminPaymentSettings: () => request("/api/v1/admin/payment-settings"),
+    adminUpdatePaymentSettings: (body) =>
+      request("/api/v1/admin/payment-settings", { method: "PATCH", body: JSON.stringify(body) }),
     adminStats: () => request("/api/v1/admin/stats"),
     adminUsers: (params = {}) => {
       const q = params.device_id ? `?device_id=${encodeURIComponent(params.device_id)}` : "";

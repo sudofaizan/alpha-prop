@@ -93,6 +93,69 @@ class CheckoutResponse(BaseModel):
     message: str
 
 
+class CreateCryptoSessionResponse(BaseModel):
+    session_id: str
+    order_id: int
+    status: str
+    order_status: str
+    amount: float
+    wallet_address: str
+    network: str
+    asset: str
+    baseline_balance: float
+    current_balance: float | None = None
+    balance_delta: float | None = None
+    expires_at: str
+    tx_hash: str | None = None
+    account_number: str | None = None
+    program: str
+    program_label: str
+    account_size: int
+    account_size_label: str
+    payment_method: str
+
+
+class PaymentSessionOut(BaseModel):
+    session_id: str
+    order_id: int
+    status: str
+    order_status: str
+    amount: float
+    wallet_address: str
+    network: str
+    asset: str
+    baseline_balance: float
+    current_balance: float | None = None
+    balance_delta: float | None = None
+    expires_at: str
+    tx_hash: str | None = None
+    account_number: str | None = None
+    program: str
+    program_label: str
+    account_size: int
+    account_size_label: str
+    payment_method: str
+    message: str | None = None
+    verified_amount: float | None = None
+
+
+class SubmitTxHashRequest(BaseModel):
+    tx_hash: str = Field(min_length=10, max_length=80)
+
+
+class PaymentSettingsOut(BaseModel):
+    wallet_address: str
+    network: str
+    asset: str
+    enabled: bool
+    updated_at: str
+
+
+class PaymentSettingsUpdate(BaseModel):
+    wallet_address: str = Field(min_length=10, max_length=64)
+    enabled: bool = True
+
+
 class AccountSummary(BaseModel):
     id: int
     account_number: str

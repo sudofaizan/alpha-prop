@@ -20,9 +20,11 @@ class Order(Base):
     base_amount = mapped_column(Float, nullable=True)
     coupon_code = mapped_column(String(64), nullable=True)
     referral_code = mapped_column(String(64), nullable=True)
-    status: Mapped[str] = mapped_column(String(32), default="paid")  # paid | refunded
+    status: Mapped[str] = mapped_column(String(32), default="paid")  # pending | paid | expired | refunded
     payment_method: Mapped[str] = mapped_column(String(32), default="mock")
+    tx_hash = mapped_column(String(80), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="orders")
     account = relationship("ChallengeAccount", back_populates="order")
+    payment_session = relationship("PaymentSession", back_populates="order", uselist=False)
